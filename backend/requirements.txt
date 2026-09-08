@@ -22,3 +22,15 @@ httpx==0.28.1
 # --- Testing ---------------------------------------------------------------
 pytest==8.3.4
 pytest-asyncio==0.25.2
+
+# --- Document scanning (OCR) -----------------------------------------------
+# PaddleOCR models running locally through ONNX Runtime — no network call and
+# no API key. Imported lazily, so a broken install degrades document reading
+# to "stored but not read" instead of stopping the app from starting.
+#
+# This is the largest dependency here (~130 MB with its models). To run
+# without it, set OCR_PROVIDER=off and skip this block; every other feature
+# works, and uploads are kept for the clinician to read.
+rapidocr-onnxruntime==1.4.4
+pillow==12.3.0
+numpy==2.4.6

@@ -7,15 +7,16 @@ so the clinician already has their history when the consultation begins. The
 product's core promise is what happens on the **second** visit: a returning
 patient describes only what is wrong today. They never repeat their history.
 
-All three phases are implemented.
-
-| Phase | Scope | Status |
+| Area | Scope | Status |
 | --- | --- | --- |
 | 1 | Onboarding, accessibility engine, patient profile | Complete |
 | 2 | Conversational history, voice, document intelligence, timeline | Complete |
 | 3 | Returning-patient visits, red-flag safety, review & submission | Complete |
+| 4 | Care-system choice — allopathy stays short, Ayurveda adds Dashavidha and Ashtasthana | Complete |
+| 5 | Six languages end to end, including the deterministic clinical narratives | Complete |
+| 6 | Public landing page with sourced statistics | Complete |
 
-**406 tests pass** — 287 backend (pytest, against real PostgreSQL) and 119
+**639 tests pass** — 446 backend (pytest, against real PostgreSQL) and 193
 frontend (vitest + React Testing Library).
 
 ---
@@ -45,27 +46,27 @@ answer is not an escape route.
 - **Python 3.11+**
 - **Node 18.18+** (Node 18 supported: Vite 6 / Tailwind 3 / react-router 6)
 
-Optional: `AI_PROVIDER=grok` for AI assistance. Everything works without it.
+Optional:
+
+- `AI_PROVIDER=grok` for AI assistance. Everything works without it.
+- Local OCR (`rapidocr-onnxruntime`, `pillow`, `numpy`) is the largest
+  dependency here, ~130 MB with its models. It is declared in
+  `backend/requirements.txt` and imported lazily: set `OCR_PROVIDER=off` and
+  skip it, and uploads are still stored for the clinician to read.
 
 ---
 
 ## Run it locally
 
+Five commands, from a clean clone:
+
 ```bash
 cp .env.example backend/.env     # adjust DATABASE_URL if needed
 make setup                       # venv + backend deps + frontend deps
 make db-create                   # createdb medikiosk, medikiosk_test
-make migrate                     # apply all three migrations
+make migrate                     # apply every migration
 make seed                        # four fictional demo patients
 ```
-
-### Routes
-
-| Path | Audience |
-| --- | --- |
-| `/` | Public landing page — what the product does, sourced statistics, log in / register |
-| `/start` | The kiosk screen a clinic pins a tablet to (language, then begin) |
-| `/home` | A recognised returning patient's personalised home |
 
 Then, in two terminals:
 
@@ -74,8 +75,50 @@ make api    # http://127.0.0.1:8000  (API docs at /docs)
 make web    # http://127.0.0.1:5173
 ```
 
-The web app proxies `/api` to the backend, so there is no CORS setup and no
-absolute URLs anywhere in the client.
+Open **http://127.0.0.1:5173**. The web app proxies `/api` to the backend, so
+there is no CORS setup and no absolute URLs anywhere in the client.
+
+To sign in, open `/login` and click **Show** under "Or explore with a demo
+patient" — the list is collapsed so the sign-in form stays the primary action.
+No SMS is sent: if you use a real mobile number instead, the one-time code is
+displayed on screen.
+
+### Without make
+
+`make` only wraps these. The same thing by hand:
+
+```bash
+# Backend
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+createdb medikiosk && createdb medikiosk_test
+.venv/bin/alembic upgrade head
+.venv/bin/python -m app.cli seed
+.venv/bin/python -m uvicorn app.main:app --reload --port 8000
+
+# Frontend, in another terminal
+cd frontend
+npm install
+npm run dev
+```
+
+### Routes
+
+| Path | Audience |
+| --- | --- |
+| `/` | Public landing page — what the product does, sourced statistics, log in / register |
+| `/start` | The kiosk screen a clinic pins a tablet to (language, then begin) |
+| `/login` | Mobile + one-time code, or a demo patient |
+| `/home` | A recognised returning patient's personalised home |
+
+### Resetting the demo
+
+```bash
+make reset && make seed     # or: python -m app.cli reset && python -m app.cli seed
+```
+
+Useful after a walkthrough leaves a visit half-finished or a language changed.
 
 ### Or with Docker
 
@@ -90,9 +133,11 @@ usable immediately.
 ### Tests
 
 ```bash
-make test            # everything
-make test-backend    # 287 tests, against medikiosk_test
-make test-frontend   # 119 tests
+make test            # everything (639)
+make test-backend    # 446 tests, against medikiosk_test
+make test-frontend   # 193 tests
+make check           # typecheck the frontend
+make build           # production build of the web app
 ```
 
 ---
