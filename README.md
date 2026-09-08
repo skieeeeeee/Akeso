@@ -500,6 +500,17 @@ Base path `/api/v1`; interactive docs at `/docs`. **56 endpoints.**
 | `GET` | `.../{id}/status`, `/timeline` |
 | `GET`/`PUT` | `/ayush/content`, `/ayush` |
 
+### Speech & operations
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/speech/status` | Whether the server can speak (key present) |
+| `POST` | `/speech` | Short text in, MP3 out; 503 means read it in the browser |
+| `GET` | `/interview/ai-status/diagnostics` | One real AI call; reports the upstream reason |
+| `GET` | `/speech/diagnostics` | One real synthesis; reports the upstream reason |
+
+The two `diagnostics` routes require a signed-in patient and never return a
+key. See [Check the integrations really work](#5-check-the-integrations-really-work).
+
 ### Visits & safety (Phase 3)
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -614,6 +625,45 @@ curl https://YOUR-API.onrender.com/api/v1/auth/demo-patients   # expect four
 ```
 
 Then open the Vercel URL, go to `/login`, and sign in with a demo patient.
+
+### 5. Check the integrations really work
+
+`/api/v1/interview/ai-status` and `/api/v1/speech/status` report only whether
+a key is *set*. Both once said `available: true` on a deployment where every
+single call failed, because a key that is present and a key that works are
+different things. Two signed-in endpoints make one real call each and say
+what actually came back:
+
+```bash
+# Sign in first (any number; the prototype code is 12345)
+API=https://YOUR-API.onrender.com/api/v1
+curl -s -X POST "$API/auth/otp/request" -H 'content-type: application/json' \
+  -d '{"mobile_number":"9820011223"}' > /dev/null
+TOKEN=$(curl -s -X POST "$API/auth/otp/verify" -H 'content-type: application/json' \
+  -d '{"mobile_number":"9820011223","code":"12345"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+curl -s "$API/interview/ai-status/diagnostics" -H "authorization: Bearer $TOKEN"
+curl -s "$API/speech/diagnostics"              -H "authorization: Bearer $TOKEN"
+```
+
+Each returns the model, endpoint and voice actually in use, whether a key is
+present, and a `probe` with the upstream status code under a named reason.
+Neither ever returns a key.
+
+| `reason` | What to change |
+| --- | --- |
+| `not_configured` | The key is not set on the service at all. |
+| `bad_key` / `bad_key_or_missing_permission` | The stored value is not a working key. Re-paste it with no surrounding whitespace, and confirm you pasted the key rather than a placeholder. For ElevenLabs, also check the key grants `text_to_speech`. |
+| `model_or_endpoint_not_found` | `AI_MODEL` or `AI_BASE_URL` is wrong, or the model was retired. The `detail` usually names the replacement. |
+| `quota_or_rate_limit` | Free-tier quota is spent. It resets, or use another key. |
+| `paid_plan_required` | `ELEVENLABS_VOICE_ID` is a shared *library* voice, which a free plan may not use through the API. Pick a voice your plan allows. |
+| `unreachable` | The service cannot make outbound calls to that host. |
+
+`ok: true` on both is the only evidence that OCR escalation and non-English
+speech are working. Until then the app still runs — documents fall back to
+the local OCR engine and questions are read by the browser voice — which is
+exactly why the failure is easy to miss.
 
 ### Before anyone real uses it
 
