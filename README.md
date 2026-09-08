@@ -19,6 +19,80 @@ patient describes only what is wrong today. They never repeat their history.
 **639 tests pass** — 446 backend (pytest, against real PostgreSQL) and 193
 frontend (vitest + React Testing Library).
 
+
+---
+
+## Quick start
+
+Copy-paste, in order. Assumes PostgreSQL is running on `localhost:5432`.
+
+```bash
+# 1. Get the code
+git clone https://github.com/utkarshdabral/Akeso.git
+cd Akeso
+
+# 2. Configuration
+cp .env.example backend/.env
+
+# 3. Create the two databases
+createdb medikiosk
+createdb medikiosk_test
+
+# 4. Backend: virtualenv and dependencies
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements-dev.txt
+
+# 5. Create the tables
+.venv/bin/alembic upgrade head
+
+# 6. Load the four fictional demo patients
+.venv/bin/python -m app.cli seed
+
+# 7. Frontend dependencies
+cd ../frontend
+npm install
+```
+
+Now start both halves, in **two separate terminals**, from the repository root:
+
+```bash
+# Terminal 1 — API on http://127.0.0.1:8000
+cd backend && .venv/bin/python -m uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+# Terminal 2 — web app on http://127.0.0.1:5173
+cd frontend && npm run dev
+```
+
+Open **http://127.0.0.1:5173**, go to `/login`, click **Show** under *"Or
+explore with a demo patient"*, and pick one. No SMS is sent.
+
+### The same thing with make
+
+```bash
+cp .env.example backend/.env
+make setup        # steps 4 and 7
+make db-create    # step 3
+make migrate      # step 5
+make seed         # step 6
+make api          # terminal 1
+make web          # terminal 2
+```
+
+### If something fails
+
+| Symptom | Cause |
+| --- | --- |
+| `could not connect to server` | PostgreSQL is not running, or `DATABASE_URL` in `backend/.env` is wrong |
+| `database "medikiosk" does not exist` | Step 3 was skipped |
+| `relation "patients" does not exist` | Step 5 was skipped |
+| Login shows no demo patients | Step 6 was skipped — run `.venv/bin/python -m app.cli seed` |
+| Uploaded documents are never read | `requirements-ocr.txt` is not installed; set `OCR_PROVIDER=off` to skip the attempt |
+| Backend tests fail immediately | `medikiosk_test` does not exist (step 3) |
+
 ---
 
 ## What it does
@@ -42,68 +116,132 @@ answer is not an escape route.
 
 ## Requirements
 
-- **PostgreSQL 14+** — required; there is no SQLite fallback
-- **Python 3.11+**
-- **Node 18.18+** (Node 18 supported: Vite 6 / Tailwind 3 / react-router 6)
-
-Optional:
-
-- `AI_PROVIDER=grok` for AI assistance. Everything works without it.
-- Local OCR (`rapidocr-onnxruntime`, `pillow`, `numpy`) is the largest
-  dependency here, ~130 MB with its models. It is declared in
-  `backend/requirements.txt` and imported lazily: set `OCR_PROVIDER=off` and
-  skip it, and uploads are still stored for the clinician to read.
+| | Version | Notes |
+| --- | --- | --- |
+| PostgreSQL | 14+ | Required. There is no SQLite fallback. |
+| Python | 3.11+ | |
+| Node | 18.18+ | Node 18 is supported: Vite 6 / Tailwind 3 / react-router 6 |
 
 ---
 
 ## Run it locally
 
-Five commands, from a clean clone:
+Six steps from a clean clone. Every command below was run against a fresh
+database and an empty virtualenv.
+
+### 1. Configuration
 
 ```bash
-cp .env.example backend/.env     # adjust DATABASE_URL if needed
-make setup                       # venv + backend deps + frontend deps
-make db-create                   # createdb medikiosk, medikiosk_test
-make migrate                     # apply every migration
-make seed                        # four fictional demo patients
+cp .env.example backend/.env
 ```
 
-Then, in two terminals:
+Open `backend/.env` and set `DATABASE_URL` if your PostgreSQL is not on
+`localhost:5432`. Every other value has a working default.
+
+### 2. Dependencies
 
 ```bash
-make api    # http://127.0.0.1:8000  (API docs at /docs)
-make web    # http://127.0.0.1:5173
+make setup
 ```
 
-Open **http://127.0.0.1:5173**. The web app proxies `/api` to the backend, so
-there is no CORS setup and no absolute URLs anywhere in the client.
-
-To sign in, open `/login` and click **Show** under "Or explore with a demo
-patient" — the list is collapsed so the sign-in form stays the primary action.
-No SMS is sent: if you use a real mobile number instead, the one-time code is
-displayed on screen.
-
-### Without make
-
-`make` only wraps these. The same thing by hand:
+That creates `backend/.venv`, installs the Python packages and runs
+`npm install`. By hand instead:
 
 ```bash
-# Backend
 cd backend
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-createdb medikiosk && createdb medikiosk_test
-.venv/bin/alembic upgrade head
-.venv/bin/python -m app.cli seed
-.venv/bin/python -m uvicorn app.main:app --reload --port 8000
-
-# Frontend, in another terminal
-cd frontend
-npm install
-npm run dev
+.venv/bin/pip install -r requirements-dev.txt   # see "Dependency files" below
+cd ../frontend && npm install
 ```
 
-### Routes
+### 3. Databases
+
+```bash
+make db-create      # createdb medikiosk && createdb medikiosk_test
+```
+
+Two databases: the second is wiped by the test suite, so keep them separate.
+
+### 4. Migrations
+
+```bash
+make migrate        # cd backend && .venv/bin/alembic upgrade head
+```
+
+Applies all six migrations. Re-runnable — it stops at the current head.
+
+### 5. Demo data
+
+```bash
+make seed           # cd backend && .venv/bin/python -m app.cli seed
+```
+
+Creates the four fictional patients described under **Demo patients** below.
+All of their medical information is invented.
+
+### 6. Start it
+
+Two terminals:
+
+```bash
+make api            # http://127.0.0.1:8000   API docs at /docs
+```
+
+```bash
+make web            # http://127.0.0.1:5173
+```
+
+Then open **http://127.0.0.1:5173**.
+
+The web app proxies `/api` to the backend, so there is no CORS setup and no
+absolute URLs anywhere in the client.
+
+### How to sign in
+
+On `/login`, click **Show** under *"Or explore with a demo patient"* — the
+list is collapsed by default so the sign-in form stays the primary action —
+then pick a patient.
+
+**No SMS is sent.** If you enter a real 10-digit mobile number instead, the
+one-time code is displayed on screen (`EXPOSE_MOCK_OTP=true`). That must be
+`false` anywhere real patients could sign in.
+
+### Resetting the demo
+
+```bash
+make reset && make seed
+```
+
+Useful after a walkthrough leaves a visit half-finished or a language changed.
+
+---
+
+## Dependency files
+
+Three files, so a deployment does not install test tooling and a machine
+without the OCR models can still run everything else.
+
+| File | Contents | When |
+| --- | --- | --- |
+| `requirements.txt` | FastAPI, SQLAlchemy, Alembic, psycopg, PyJWT, httpx | Always |
+| `requirements-ocr.txt` | rapidocr-onnxruntime, pillow, numpy | To read uploaded documents |
+| `requirements-dev.txt` | the two above, plus pytest | To run the tests |
+
+```bash
+pip install -r requirements.txt                 # serve traffic only
+pip install -r requirements-ocr.txt             # add document scanning
+pip install -r requirements-dev.txt             # everything, for the suite
+```
+
+`requirements-ocr.txt` is around 130 MB once the models download on first
+use. **Skipping it is supported**: the OCR provider imports lazily, so
+document reading degrades to "stored but not read", and `OCR_PROVIDER=off`
+skips the attempt entirely. Uploads are still saved and shown to the
+clinician, and no other feature is affected.
+
+---
+
+## Routes
 
 | Path | Audience |
 | --- | --- |
@@ -112,15 +250,9 @@ npm run dev
 | `/login` | Mobile + one-time code, or a demo patient |
 | `/home` | A recognised returning patient's personalised home |
 
-### Resetting the demo
+---
 
-```bash
-make reset && make seed     # or: python -m app.cli reset && python -m app.cli seed
-```
-
-Useful after a walkthrough leaves a visit half-finished or a language changed.
-
-### Or with Docker
+## Or with Docker
 
 ```bash
 make docker-up      # Postgres + API + web on http://localhost:8080, seeded
@@ -130,7 +262,9 @@ make docker-down
 The API container applies migrations on boot, so a fresh managed database is
 usable immediately.
 
-### Tests
+---
+
+## Tests
 
 ```bash
 make test            # everything (639)
@@ -139,6 +273,11 @@ make test-frontend   # 193 tests
 make check           # typecheck the frontend
 make build           # production build of the web app
 ```
+
+The backend suite needs `medikiosk_test` to exist (step 3) and builds its
+schema from the models. `tests/test_migrations.py` additionally applies the
+real migrations to a throwaway database and compares every native enum
+against its Python counterpart.
 
 ---
 

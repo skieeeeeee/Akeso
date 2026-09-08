@@ -1,0 +1,18 @@
+# MediKiosk — document scanning (optional)
+#
+# PaddleOCR models running locally through ONNX Runtime: no network call and
+# no API key. Roughly 130 MB once the models are downloaded on first use.
+#
+#   pip install -r requirements-ocr.txt
+#
+# Skipping this is a supported configuration. The provider imports lazily, so
+# without it document reading degrades to "stored but not read" — set
+# OCR_PROVIDER=off to skip the attempt entirely. Uploads are still saved and
+# shown to the clinician, and every other feature is unaffected.
+
+rapidocr-onnxruntime==1.4.4
+
+# Used to pre-scale small photographs before recognition, which measurably
+# improves printed text. Also RapidOCR's own image handling.
+pillow==12.3.0
+numpy==2.4.6

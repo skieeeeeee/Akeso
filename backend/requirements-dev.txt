@@ -1,0 +1,12 @@
+# MediKiosk — test and development tooling
+#
+#   pip install -r requirements-dev.txt
+#
+# Installs the runtime and OCR sets too: the suite covers the document
+# pipeline, so the tests need the OCR packages present.
+
+-r requirements.txt
+-r requirements-ocr.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.2

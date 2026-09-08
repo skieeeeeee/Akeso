@@ -13,7 +13,7 @@ help: ## Show available commands
 setup: ## Install backend and frontend dependencies
 	python3 -m venv backend/.venv
 	$(PIP) install --quiet --upgrade pip
-	$(PIP) install --quiet -r backend/requirements.txt
+	$(PIP) install --quiet -r backend/requirements-dev.txt
 	cd frontend && npm install
 
 db-create: ## Create the development and test databases

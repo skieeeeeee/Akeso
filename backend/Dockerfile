@@ -13,8 +13,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first, so a code change does not invalidate the layer.
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
+COPY requirements.txt requirements-ocr.txt ./
+RUN pip install -r requirements.txt -r requirements-ocr.txt
 
 COPY app ./app
 COPY alembic ./alembic
