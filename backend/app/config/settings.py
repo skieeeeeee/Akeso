@@ -104,8 +104,11 @@ class Settings(BaseSettings):
     # before — this is an upgrade, never a dependency.
     elevenlabs_api_key: str | None = None
     elevenlabs_model: str = "eleven_turbo_v2_5"
-    # A multilingual voice. Overridable per deployment.
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    # A multilingual voice a free ElevenLabs plan can actually use. Several
+    # of the widely quoted ids are shared "library" voices and answer 402
+    # paid_plan_required on a free key; this one does not. Verified to return
+    # audio for all six supported languages.
+    elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"
     elevenlabs_timeout_seconds: float = 30.0
 
     @property
