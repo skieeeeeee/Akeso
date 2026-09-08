@@ -37,6 +37,15 @@ MED_PREFIX = re.compile(
     r"^(?:\d+[.)]\s*)?(?:tab|tabs|tablet|cap|caps|capsule|syp|syrup|inj|injection|oint|drops?)\b\.?\s*",
     re.I,
 )
+# Dosage forms written after the medicine's name: "Lamifin Cream",
+# "Nizoclin Soap", "Candid Powder". A leading MED_PREFIX ("Tab.", "Cap.")
+# covers the forms written before it.
+MED_SUFFIX_FORM = re.compile(
+    r"\b(cream|ointment|soap|lotion|gel|powder|shampoo|solution|spray|"
+    r"drops?|inhaler|sachet)\b",
+    re.I,
+)
+
 LAB_LINE = re.compile(
     r"^([A-Za-z][A-Za-z0-9 ()/.'%-]{2,40}?)\s*[:\-]?\s+(\d+(?:\.\d+)?)\s*"
     r"([A-Za-z/%µ]+(?:/[A-Za-z]+)?)?\s*"
@@ -170,13 +179,24 @@ def compute_flag(value: str | None, reference_range: str | None) -> LabFlag | No
     return LabFlag.NORMAL
 
 
+# Leading list markers as a prescription actually writes them: "1.", "2)",
+# "(3)", and the circled digits a vision model reproduces from the page.
+_LIST_MARKER = re.compile(r"^\s*(?:[(\[]?\d{1,2}|[\u2460-\u2473])\s*[)\].:]*\s*")
+
+
 def _medication(line: str) -> Finding | None:
     cleaned = re.sub(r"\s+", " ", line).strip().lstrip("-•* ")
-    if not MED_PREFIX.match(cleaned) and not DOSE.search(cleaned):
+    cleaned = _LIST_MARKER.sub("", cleaned).strip()
+    form = MED_SUFFIX_FORM.search(cleaned)
+    if not MED_PREFIX.match(cleaned) and not DOSE.search(cleaned) and not form:
         return None
     body = MED_PREFIX.sub("", cleaned)
     dose, freq, dur = DOSE.search(body), FREQUENCY.search(body), DURATION.search(body)
     cut = min((m.start() for m in (dose, freq, dur) if m), default=len(body))
+    # "Lamifin Cream for L/A Night" -> keep "Lamifin Cream", drop the rest.
+    suffix = MED_SUFFIX_FORM.search(body)
+    if suffix and not (dose or freq or dur):
+        cut = min(cut, suffix.end())
     name = re.sub(r"[,:;]+$", "", body[:cut]).strip()
     if len(name) < 3 or name.isdigit():
         return None
@@ -376,6 +396,20 @@ _PATIENT = re.compile(
 )
 _PHONE = re.compile(r"\b(?:\+?91[\s-]?)?([6-9]\d{9})\b")
 
+# A letterhead's contact line often names the clinic ("Call Clinic No.: …"),
+# which made it look like the facility. Digits and a contact word together are
+# the giveaway; a real facility name carries neither.
+_CONTACT_WORDS = re.compile(
+    r"\b(?:call|phone|ph|tel|telephone|mob|mobile|contact|no\.?|timings?|"
+    r"between|am|pm)\b",
+    re.I,
+)
+
+
+def _is_contact_line(line: str) -> bool:
+    digits = sum(c.isdigit() for c in line)
+    return digits >= 5 and bool(_CONTACT_WORDS.search(line))
+
 
 def _clean(value: str) -> str:
     return re.sub(r"\s{2,}", " ", value).strip(" .,:;-–—")
@@ -406,7 +440,7 @@ def letterhead(text: str) -> dict[str, str]:
     # Facility: a line naming one, else an all-caps line near the top, which is
     # how nearly every Indian letterhead is set.
     for line in lines[:6]:
-        if _FACILITY_RE.search(line):
+        if _FACILITY_RE.search(line) and not _is_contact_line(line):
             found["facility"] = line
             break
     else:

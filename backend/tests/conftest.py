@@ -13,6 +13,13 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ.setdefault("JWT_SECRET", "test-secret-value")
 os.environ.setdefault("EXPOSE_MOCK_OTP", "true")
 
+# No test may reach a real model. A developer with AI_API_KEY set in their
+# .env would otherwise make the suite call a paid API — slow, flaky, and
+# billed. Every AI path has a deterministic fallback, and that is what the
+# suite exercises; a test wanting the AI path stubs the provider itself.
+os.environ["AI_PROVIDER"] = "none"
+os.environ["AI_API_KEY"] = ""
+
 from collections.abc import Iterator  # noqa: E402
 
 import pytest  # noqa: E402
