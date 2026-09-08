@@ -13,6 +13,7 @@ failure, because the document itself must survive regardless.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -171,6 +172,29 @@ class AiVisionProvider:
         raise NotImplementedError("use read_async")
 
 
+# Below this, the local engine is guessing rather than reading.
+_LOW_CONFIDENCE = 0.85
+# A document with almost no ordinary words in it is not a document we read.
+_MIN_WORDLIKE_RATIO = 0.5
+
+
+def _looks_unreliable(result: OcrResult) -> bool:
+    """Whether a local read is poor enough to be worth a second opinion.
+
+    Two signals, both cheap. Neither is clever: the point is only to stop a
+    confidently-wrong page of glyphs from being treated as a successful read.
+    """
+    if result.confidence < _LOW_CONFIDENCE:
+        return True
+    tokens = re.findall(r"[A-Za-z]{2,}", result.text)
+    if not tokens:
+        return True
+    # Real words are mostly lower case with at most one capital. Strings like
+    # "Hfaspos" or "xoclsfT" fail this; "Paracetamol" and "mg" pass.
+    wordlike = sum(1 for token in tokens if token[1:].islower())
+    return wordlike / len(tokens) < _MIN_WORDLIKE_RATIO
+
+
 class OcrUnavailable(RuntimeError):
     """No provider could produce text. The document is still stored."""
 
@@ -184,30 +208,53 @@ async def run_ocr(path: Path, mime_type: str) -> OcrResult:
     if mode == "off":
         raise OcrUnavailable("Reading documents is switched off on this server.")
 
-    sync_providers: list[OcrProvider] = [PlaintextProvider()]
-    if mode in ("auto", "local"):
-        sync_providers.append(LocalOcrProvider())
-
     reasons: list[str] = []
-    for provider in sync_providers:
-        try:
-            result = provider.read(path, mime_type)
-        except Exception as exc:  # noqa: BLE001 - one engine failing is not fatal
-            reasons.append(f"{provider.name}: {exc}")
-            log.warning("OCR provider %s failed: %s", provider.name, exc)
-            continue
-        if result:
-            log.info("read %s via %s (%.2f)", path.name, result.engine, result.confidence)
-            return result
 
-    if mode in ("auto", "ai"):
+    # Plain text first: exact, free, and no engine can beat it.
+    try:
+        result = PlaintextProvider().read(path, mime_type)
+        if result:
+            log.info("read %s via %s", path.name, result.engine)
+            return result
+    except Exception as exc:  # noqa: BLE001 - one engine failing is not fatal
+        reasons.append(f"plaintext: {exc}")
+
+    local: OcrResult | None = None
+    if mode in ("auto", "local"):
         try:
-            result = await AiVisionProvider().read_async(path, mime_type)
-            if result:
-                return result
+            local = LocalOcrProvider().read(path, mime_type)
+        except Exception as exc:  # noqa: BLE001
+            reasons.append(f"rapidocr: {exc}")
+            log.warning("OCR provider rapidocr failed: %s", exc)
+
+    # Escalate to a vision model when the local engine produced nothing, or
+    # produced something that does not read like a document.
+    #
+    # This used to return the local result the moment it was non-empty, which
+    # meant a page of garbage counted as success and the vision model was
+    # never asked. Handwriting is exactly where that mattered: the local
+    # models are trained on print, and a vision model does far better because
+    # it reads a prescription in context rather than glyph by glyph.
+    if mode in ("auto", "ai") and (local is None or _looks_unreliable(local)):
+        try:
+            better = await AiVisionProvider().read_async(path, mime_type)
         except Exception as exc:  # noqa: BLE001
             reasons.append(f"ai_vision: {exc}")
             log.warning("AI vision OCR failed: %s", exc)
+        else:
+            if better:
+                log.info(
+                    "read %s via %s (%.2f), escalated from %s",
+                    path.name,
+                    better.engine,
+                    better.confidence,
+                    local.engine if local else "nothing",
+                )
+                return better
+
+    if local:
+        log.info("read %s via %s (%.2f)", path.name, local.engine, local.confidence)
+        return local
 
     raise OcrUnavailable(
         "We could not read any text from this file. "

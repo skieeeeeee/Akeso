@@ -312,6 +312,14 @@ export const STRINGS = {
   },
 
   // --- Voice -------------------------------------------------------------
+  voiceSpeakInstead: {
+    en: "Speak instead",
+    hi: "बोलकर बताएँ",
+    mr: "बोलून सांगा",
+    ta: "பேசிச் சொல்லுங்கள்",
+    gu: "બોલીને કહો",
+    pa: "ਬੋਲ ਕੇ ਦੱਸੋ",
+  },
   voiceTapToSpeak: { en: "Tap to speak", hi: "बोलने के लिए छुएं" },
   voiceListening: { en: "Listening…", hi: "सुन रहे हैं…" },
   voiceStop: { en: "Stop", hi: "रोकें" },

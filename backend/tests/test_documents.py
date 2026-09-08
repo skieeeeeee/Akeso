@@ -236,3 +236,132 @@ class TestLetterhead:
     def test_a_phone_number_is_read_when_present(self):
         head = extraction.letterhead("APOLLO CLINIC\nDr. S Rao\nPhone: 9848012345")
         assert head["phone"] == "9848012345"
+
+
+class TestOcrEscalation:
+    """A poor local read must not block the vision model.
+
+    `run_ocr` used to return the local result the moment it was non-empty, so
+    a page of garbage counted as a successful read and AiVisionProvider was
+    never asked. Handwriting is exactly where that mattered: the local models
+    are trained on print.
+    """
+
+    # The real RapidOCR output from a handwritten prescription.
+    HANDWRITTEN = (
+        "m.Gopinatt\nMorning:Monday,Wedne\nSunday Closed\n818010\nysnng\n"
+        "1ay/ho\nP.veascolon\nOpC\nNochaua\nOap.\nx10cay\nHfaspos\nloomg\n"
+        "Mom\nCouean\nCaeam\nanata\nMixocla\nx15da8\nhop"
+    )
+    PRINTED = (
+        "SHRI SAI POLYCLINIC\nDr. A. R. Mehta, MBBS MD (Medicine)\n"
+        "Date: 12/03/2026\nDiagnosis: Type 2 Diabetes Mellitus\nRx\n"
+        "1. Tab. Metformin 500 mg  BD  x 30 days\nAdvice: Low salt diet"
+    )
+
+    def test_a_garbled_read_is_escalated(self):
+        from app.services.ocr.provider import OcrResult, _looks_unreliable
+
+        assert _looks_unreliable(
+            OcrResult(text=self.HANDWRITTEN, engine="rapidocr", confidence=0.709)
+        )
+
+    def test_a_clean_printed_read_is_kept(self):
+        """The common case must not pay for an API call it does not need."""
+        from app.services.ocr.provider import OcrResult, _looks_unreliable
+
+        assert not _looks_unreliable(
+            OcrResult(text=self.PRINTED, engine="rapidocr", confidence=0.96)
+        )
+
+    def test_low_confidence_is_escalated_even_when_the_words_look_real(self):
+        from app.services.ocr.provider import OcrResult, _looks_unreliable
+
+        assert _looks_unreliable(
+            OcrResult(text=self.PRINTED, engine="rapidocr", confidence=0.5)
+        )
+
+    def test_empty_or_wordless_text_is_escalated(self):
+        from app.services.ocr.provider import OcrResult, _looks_unreliable
+
+        for text in ("", "\n\n  \n", "12345 //// ---"):
+            assert _looks_unreliable(
+                OcrResult(text=text, engine="rapidocr", confidence=0.99)
+            ), repr(text)
+
+    async def test_the_local_result_still_wins_when_nothing_better_exists(
+        self, tmp_path, monkeypatch
+    ):
+        """With no AI provider configured, a poor read is better than none.
+
+        The document is never lost over this: a garbled transcription is still
+        shown to the patient, and the file itself is always kept.
+        """
+        from app.services.ocr import provider as ocr
+
+        monkeypatch.setattr(ocr.settings, "ocr_provider", "auto")
+        garbled = ocr.OcrResult(
+            text=self.HANDWRITTEN, engine="rapidocr", confidence=0.709
+        )
+        monkeypatch.setattr(
+            ocr.LocalOcrProvider, "read", lambda *_args: garbled
+        )
+
+        # No AI provider configured, so escalation is attempted and declines.
+        async def declines(*_args):
+            return None
+
+        monkeypatch.setattr(ocr.AiVisionProvider, "read_async", declines)
+        image = tmp_path / "rx.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        result = await ocr.run_ocr(image, "image/png")
+        assert result.engine == "rapidocr"
+        assert result.text == self.HANDWRITTEN
+
+    async def test_a_configured_vision_model_takes_over(self, tmp_path, monkeypatch):
+        """The whole point: the better engine gets a turn."""
+        from app.services.ocr import provider as ocr
+
+        monkeypatch.setattr(ocr.settings, "ocr_provider", "auto")
+        garbled = ocr.OcrResult(
+            text=self.HANDWRITTEN, engine="rapidocr", confidence=0.709
+        )
+        monkeypatch.setattr(ocr.LocalOcrProvider, "read", lambda *_args: garbled)
+
+        async def transcribes(*_args):
+            return ocr.OcrResult(
+                text="Dr. M. Gopinath MD(DVL)\nCap. Itaspor 200mg x 10 days",
+                engine="ai_vision",
+                confidence=0.85,
+            )
+
+        monkeypatch.setattr(ocr.AiVisionProvider, "read_async", transcribes)
+        image = tmp_path / "rx.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        result = await ocr.run_ocr(image, "image/png")
+        assert result.engine == "ai_vision"
+        assert "Itaspor" in result.text
+
+    async def test_a_clean_read_never_calls_the_vision_model(
+        self, tmp_path, monkeypatch
+    ):
+        """Cost control: the common case must not hit an API."""
+        from app.services.ocr import provider as ocr
+
+        monkeypatch.setattr(ocr.settings, "ocr_provider", "auto")
+        clean = ocr.OcrResult(text=self.PRINTED, engine="rapidocr", confidence=0.96)
+        monkeypatch.setattr(ocr.LocalOcrProvider, "read", lambda *_args: clean)
+
+        called = False
+
+        async def must_not_run(*_args):
+            nonlocal called
+            called = True
+            return None
+
+        monkeypatch.setattr(ocr.AiVisionProvider, "read_async", must_not_run)
+        image = tmp_path / "rx.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        result = await ocr.run_ocr(image, "image/png")
+        assert result.engine == "rapidocr"
+        assert called is False

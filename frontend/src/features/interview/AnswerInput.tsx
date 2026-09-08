@@ -40,6 +40,7 @@ export function AnswerInput({
   const [items, setItems] = useState<string[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
   const [showTyping, setShowTyping] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // A new question means a clean slate.
   useEffect(() => {
@@ -47,12 +48,23 @@ export function AnswerInput({
     setItems([]);
     setChosen([]);
     setShowTyping(false);
+    setVoiceOpen(false);
     voice.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per question
   }, [question.instance_key]);
 
-  const wantsVoice =
-    voice.isSupported && preferences.interaction_preference !== "touch";
+  // Dictation is offered on every free-text question the browser can handle.
+  //
+  // `interaction_preference` decides how *prominent* it is, not whether it
+  // exists: it used to be `!== "touch"`, which removed the microphone
+  // outright for a touch-preferring patient — including from the demo patient
+  // most people open first, so the product's headline feature looked missing.
+  // Someone who prefers tapping may still want to speak a long description
+  // rather than thumb-type it.
+  const voiceAvailable = voice.isSupported;
+  const voiceProminent =
+    voiceAvailable && preferences.interaction_preference !== "touch";
+  const wantsVoice = voiceAvailable && (voiceProminent || voiceOpen);
 
   const isChoice =
     question.kind === "single_choice" ||
@@ -203,6 +215,20 @@ export function AnswerInput({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Touch-first patients get a quiet way into dictation rather than
+          having it taken away. */}
+      {voiceAvailable && !voiceProminent && !voiceOpen && (
+        <Button
+          variant="ghost"
+          size="md"
+          disabled={disabled}
+          onClick={() => setVoiceOpen(true)}
+        >
+          <Mic className="h-5 w-5" aria-hidden="true" />
+          {t("voiceSpeakInstead")}
+        </Button>
       )}
 
       {/* --- Voice ------------------------------------------------------ */}

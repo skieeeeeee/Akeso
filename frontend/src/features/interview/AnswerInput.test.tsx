@@ -283,3 +283,46 @@ describe("AnswerInput — voice", () => {
     expect(screen.getByText("Metformin")).toBeInTheDocument();
   });
 });
+
+describe("dictation is available whatever the interaction preference", () => {
+  it("a touch-preferring patient can still reach the microphone", async () => {
+    // `interaction_preference: "touch"` used to remove dictation entirely —
+    // including from the demo patient most people open first, so the headline
+    // feature looked missing. It decides prominence now, not availability.
+    const user = userEvent.setup();
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    stubPreferences({ ...PREFERENCES, interaction_preference: "touch" });
+    renderWithProviders(<AnswerInput question={question()} onSubmit={vi.fn()} />);
+
+    const open = await screen.findByRole("button", { name: /speak instead/i });
+    await user.click(open);
+    expect(await screen.findByRole("button", { name: /tap to speak/i })).toBeInTheDocument();
+  });
+
+  it("a voice-preferring patient gets the microphone straight away", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    stubPreferences({ ...PREFERENCES, interaction_preference: "voice" });
+    renderWithProviders(<AnswerInput question={question()} onSubmit={vi.fn()} />);
+
+    expect(await screen.findByRole("button", { name: /tap to speak/i })).toBeInTheDocument();
+    // No extra step to get there.
+    expect(screen.queryByRole("button", { name: /speak instead/i })).not.toBeInTheDocument();
+  });
+
+  it("tapping questions still have no microphone", async () => {
+    // Dictating a choice adds nothing, so those stay tap-only.
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    stubPreferences({ ...PREFERENCES, interaction_preference: "voice" });
+    renderWithProviders(
+      <AnswerInput
+        question={question({
+          kind: "single_choice",
+          options: [{ value: "yes", label: "Yes", icon: null }],
+        })}
+        onSubmit={vi.fn()}
+      />,
+    );
+    await screen.findByText("Yes");
+    expect(screen.queryByRole("button", { name: /tap to speak|speak instead/i })).not.toBeInTheDocument();
+  });
+});
