@@ -127,6 +127,20 @@ function safeParse(text: string): unknown {
   }
 }
 
+/**
+ * Where the API lives, and the auth header for it.
+ *
+ * Exposed for the few calls that cannot go through `api.*` because they do
+ * not return JSON — speech synthesis returns audio bytes. Everything else
+ * should use the helpers below.
+ */
+export const apiBase = BASE;
+
+export function authHeaders(): Record<string, string> {
+  const token = tokenStore.get();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body ?? {} }),

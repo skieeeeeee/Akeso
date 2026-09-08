@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/providers/I18nProvider";
 import { usePreferences } from "@/providers/PreferencesProvider";
+import { api, apiBase, authHeaders } from "@/services/apiClient";
 
 /**
- * Audio guidance via the browser's speech synthesiser.
+ * Audio guidance, from the server when it can and the browser otherwise.
  *
- * Deliberately browser-side: it needs no server, no API key and no network,
- * so it cannot fail in a way that blocks the patient. When synthesis is
- * unavailable `isSupported` is false and the UI simply hides the control —
- * every instruction is always on screen as text as well.
+ * The browser's synthesiser needs no key and no network, so it stays the
+ * default and the fallback. But a phone or kiosk commonly has *no installed
+ * voice* for Marathi, Gujarati or Punjabi, so in those languages it simply
+ * cannot speak — which is exactly the patient who most needs a question read
+ * aloud. When the server has speech configured it is used instead, which
+ * covers every language we ship.
+ *
+ * Either way audio is an enhancement: every instruction is on screen as text,
+ * and any failure falls through to the browser and then to silence, never to
+ * a blocked page.
  */
 
 /**
@@ -55,13 +63,30 @@ export function useSpeech() {
     return () => window.speechSynthesis.removeEventListener?.("voiceschanged", check);
   }, [isSupported, language]);
 
+  // Whether the server can speak. Asked once; a failure just means "no".
+  const serverSpeech = useQuery({
+    queryKey: ["speech-status"],
+    queryFn: () => api.get<{ available: boolean }>("/speech/status"),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const serverCanSpeak = serverSpeech.data?.available === true;
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const stop = useCallback(() => {
-    if (!isSupported) return;
-    window.speechSynthesis.cancel();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      if (audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
+      audioRef.current = null;
+    }
+    if (isSupported) window.speechSynthesis.cancel();
     setIsSpeaking(false);
   }, [isSupported]);
 
-  const speak = useCallback(
+  /** Read it with the browser's own voice. The fallback, and the default. */
+  const speakLocally = useCallback(
     (text: string) => {
       if (!isSupported || !text.trim()) return;
       try {
@@ -81,6 +106,46 @@ export function useSpeech() {
     [isSupported, language],
   );
 
+  const speak = useCallback(
+    (text: string) => {
+      const spoken = text.trim();
+      if (!spoken) return;
+      if (!serverCanSpeak) {
+        speakLocally(spoken);
+        return;
+      }
+      stop();
+      setIsSpeaking(true);
+      void (async () => {
+        try {
+          const response = await fetch(`${apiBase}/speech`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ text: spoken, language }),
+          });
+          if (!response.ok) throw new Error(String(response.status));
+          const blob = await response.blob();
+          const audio = new Audio(URL.createObjectURL(blob));
+          audioRef.current = audio;
+          audio.onended = () => {
+            URL.revokeObjectURL(audio.src);
+            setIsSpeaking(false);
+          };
+          audio.onerror = () => {
+            setIsSpeaking(false);
+            speakLocally(spoken);
+          };
+          await audio.play();
+        } catch {
+          // Quota, a network blip, a scoped-out key: read it in the browser.
+          setIsSpeaking(false);
+          speakLocally(spoken);
+        }
+      })();
+    },
+    [serverCanSpeak, speakLocally, stop, language],
+  );
+
   /** Speak only when the patient has audio guidance switched on. */
   const announce = useCallback(
     (text: string) => {
@@ -93,9 +158,14 @@ export function useSpeech() {
   useEffect(() => stop, [stop]);
 
   return {
-    isSupported,
-    /** False when this device has no installed voice for the chosen language. */
-    hasVoiceForLanguage: hasVoice,
+    // Server speech needs no browser synthesiser, so it counts as support.
+    isSupported: isSupported || serverCanSpeak,
+    /**
+     * False only when neither the server nor this device can speak the
+     * chosen language. Server speech covers all six, so this is true
+     * whenever it is configured.
+     */
+    hasVoiceForLanguage: serverCanSpeak || hasVoice,
     isSpeaking,
     speak,
     announce,

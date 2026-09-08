@@ -31,6 +31,7 @@ def build_router() -> APIRouter:
     from app.modules.documents.router import router as documents_router
     from app.modules.medical_history.router import router as medical_history_router
     from app.modules.patient.router import router as patient_router
+    from app.modules.speech.router import router as speech_router
 
     api = APIRouter(prefix=settings.api_prefix)
     for module_router in (
@@ -45,6 +46,7 @@ def build_router() -> APIRouter:
         ayush_router,
         timeline_router,
         encounter_router,
+        speech_router,
     ):
         api.include_router(module_router)
     return api

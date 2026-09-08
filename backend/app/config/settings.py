@@ -91,6 +91,27 @@ class Settings(BaseSettings):
     ai_base_url: str | None = None
     ai_timeout_seconds: float = 20.0
 
+    # --- Speech (text to speech) -------------------------------------------
+    # ElevenLabs reads questions aloud for the languages a device has no voice
+    # for. Marathi, Gujarati and Punjabi commonly have none installed, which
+    # is the gap this closes.
+    #
+    # The key stays server-side: the browser calls our own endpoint, which
+    # proxies to ElevenLabs. A Vite build inlines anything it can see, so a
+    # key given to the client would be readable by every visitor.
+    #
+    # Unset means the browser's own speech synthesis is used, exactly as
+    # before — this is an upgrade, never a dependency.
+    elevenlabs_api_key: str | None = None
+    elevenlabs_model: str = "eleven_turbo_v2_5"
+    # A multilingual voice. Overridable per deployment.
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_timeout_seconds: float = 30.0
+
+    @property
+    def speech_enabled(self) -> bool:
+        return bool(self.elevenlabs_api_key)
+
     # --- OCR ---------------------------------------------------------------
     # "auto" tries local OCR then AI vision; "off" stores documents without
     # attempting to read them.

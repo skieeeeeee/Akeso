@@ -60,6 +60,13 @@ services:
       - key: CORS_ORIGINS
         value: '["https://akeso-zeta.vercel.app", "http://localhost:5173"]'
 
+      # --- Speech ---------------------------------------------------------
+      # Set the value in the dashboard, not here: it is a secret. The key
+      # needs the "Text to Speech" permission or every request 401s.
+      # Unset simply means the browser reads questions aloud instead.
+      - key: ELEVENLABS_API_KEY
+        sync: false
+
       # --- Document scanning ----------------------------------------------
       # The OCR models are installed in the image. On the free instance
       # (512 MB RAM) loading them can be tight; set OCR_PROVIDER=off if the
