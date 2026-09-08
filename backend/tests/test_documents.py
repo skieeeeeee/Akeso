@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import zlib
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.modules.documents import extraction
@@ -365,3 +366,69 @@ class TestOcrEscalation:
         result = await ocr.run_ocr(image, "image/png")
         assert result.engine == "rapidocr"
         assert called is False
+
+
+class TestAFailedReadTellsThePatientNothingTechnical:
+    """`processing_error` is shown to the patient, so it must stay plain.
+
+    It used to be built as `f"{exc} ..."` where the exception text ended in
+    the last provider's raw failure — so a Python `AttributeError`, or a
+    vendor's JSON error body, could appear on a patient's records screen. The
+    technical trail now travels on the exception separately, for the log.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_message_is_plain_and_the_trail_is_separate(
+        self, tmp_path, monkeypatch
+    ):
+        from app.services.ocr import provider as ocr_provider
+
+        monkeypatch.setattr(ocr_provider.settings, "ocr_provider", "auto")
+
+        def exploding_read(self, path, mime_type):  # noqa: ANN001
+            raise AttributeError("'bytes' object has no attribute 'name'")
+
+        async def no_vision(self, path, mime_type):  # noqa: ANN001
+            return None
+
+        monkeypatch.setattr(ocr_provider.LocalOcrProvider, "read", exploding_read)
+        monkeypatch.setattr(ocr_provider.AiVisionProvider, "read_async", no_vision)
+
+        image = tmp_path / "scan.jpg"
+        image.write_bytes(b"\xff\xd8\xff\xdb not really a jpeg")
+
+        with pytest.raises(ocr_provider.OcrUnavailable) as caught:
+            await ocr_provider.run_ocr(image, "image/jpeg")
+
+        patient_facing = str(caught.value)
+        assert "AttributeError" not in patient_facing
+        assert "bytes" not in patient_facing
+        assert "object has no attribute" not in patient_facing
+
+        # The detail still exists -- for whoever is reading the logs.
+        assert "object has no attribute" in caught.value.technical
+
+    @pytest.mark.asyncio
+    async def test_a_silent_vision_failure_is_recorded(self, tmp_path, monkeypatch):
+        """An exhausted quota must not be filed as "your photo was blurry"."""
+        from app.services.ocr import provider as ocr_provider
+
+        monkeypatch.setattr(ocr_provider.settings, "ocr_provider", "auto")
+        monkeypatch.setattr(
+            ocr_provider.LocalOcrProvider,
+            "read",
+            lambda self, path, mime_type: None,
+        )
+
+        async def no_vision(self, path, mime_type):  # noqa: ANN001
+            return None
+
+        monkeypatch.setattr(ocr_provider.AiVisionProvider, "read_async", no_vision)
+
+        image = tmp_path / "scan.jpg"
+        image.write_bytes(b"\xff\xd8\xff\xdb not really a jpeg")
+
+        with pytest.raises(ocr_provider.OcrUnavailable) as caught:
+            await ocr_provider.run_ocr(image, "image/jpeg")
+
+        assert "ai_vision: returned no text" in caught.value.technical

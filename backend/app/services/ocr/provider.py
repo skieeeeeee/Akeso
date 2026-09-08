@@ -196,7 +196,17 @@ def _looks_unreliable(result: OcrResult) -> bool:
 
 
 class OcrUnavailable(RuntimeError):
-    """No provider could produce text. The document is still stored."""
+    """No provider could produce text. The document is still stored.
+
+    `str(exc)` is shown to the patient, so it stays plain and blame-free.
+    `technical` is the provider trail for the log only: it used to be
+    interpolated into the patient-facing message, which meant a Python
+    AttributeError could surface in a patient's records screen.
+    """
+
+    def __init__(self, message: str, technical: str | None = None) -> None:
+        super().__init__(message)
+        self.technical = technical
 
 
 async def run_ocr(path: Path, mime_type: str) -> OcrResult:
@@ -251,12 +261,24 @@ async def run_ocr(path: Path, mime_type: str) -> OcrResult:
                     local.engine if local else "nothing",
                 )
                 return better
+            # The provider returning nothing is not the same as it not being
+            # configured, and both used to vanish here. Without this, an
+            # exhausted quota reached the patient as "the image may be too
+            # blurred" -- pointing at their photo instead of the server.
+            reasons.append("ai_vision: returned no text")
+            log.warning(
+                "AI vision returned no text for %s; check /interview/ai-status/diagnostics",
+                path.name,
+            )
 
     if local:
         log.info("read %s via %s (%.2f)", path.name, local.engine, local.confidence)
         return local
 
+    trail = "; ".join(reasons) if reasons else "every provider declined"
+    log.warning("OCR produced nothing for %s: %s", path.name, trail)
     raise OcrUnavailable(
-        "We could not read any text from this file. "
-        + (f"({reasons[-1]})" if reasons else "The image may be too blurred.")
+        "We could not read any text from this file. It may be too blurred, "
+        "or too dark to read.",
+        technical=trail,
     )

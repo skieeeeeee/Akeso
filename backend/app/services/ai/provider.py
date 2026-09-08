@@ -55,6 +55,18 @@ class AiProvider(Protocol):
         """
         ...
 
+    async def probe(self) -> dict[str, Any]:
+        """Report whether the provider can actually be reached right now.
+
+        `complete_json` deliberately hides the reason a call failed, because
+        its callers must behave identically whichever failure occurred. That
+        left a deployment with a working-looking status and no way to find
+        out why every request fell back. This is the missing half: it is for
+        an operator checking a deployment, so it may say *why*. It must never
+        reach patient-facing text, and must never include the API key.
+        """
+        ...
+
 
 class NullProvider:
     """The Phase 1 default: no AI, always falls back."""
@@ -71,6 +83,13 @@ class NullProvider:
         image_media_type: str = "image/png",
     ) -> dict[str, Any] | None:
         return None
+
+    async def probe(self) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "reason": "not_configured",
+            "detail": "No AI provider is configured, so every call falls back.",
+        }
 
 
 def get_provider() -> AiProvider:
@@ -115,6 +134,13 @@ def provider_status() -> dict[str, Any]:
         "provider": provider.name,
         "available": provider.name != "none",
         "detail": None,
+        # Which model and endpoint this deployment is actually using. A wrong
+        # value here looks identical to a working configuration from the
+        # outside, which cost real time to diagnose. The key is never
+        # included -- only whether one is present.
+        "model": settings.ai_model,
+        "endpoint": settings.ai_base_url,
+        "key_present": bool(settings.ai_api_key),
     }
 
 

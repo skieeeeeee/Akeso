@@ -30,6 +30,16 @@ _RETRY_BASE_DELAY = 1.5
 
 log = logging.getLogger("medikiosk.ai.grok")
 
+# Named so an operator reading a probe result does not have to look up what
+# the status code means for this vendor.
+_REASONS = {
+    400: "bad_request",
+    401: "bad_key",
+    403: "forbidden",
+    404: "model_or_endpoint_not_found",
+    429: "quota_or_rate_limit",
+}
+
 # x.ai exposes an OpenAI-compatible chat-completions endpoint.
 DEFAULT_BASE_URL = "https://api.x.ai/v1"
 DEFAULT_MODEL = "grok-4"
@@ -95,6 +105,57 @@ class GrokProvider:
             return None
 
         return _parse_json_object(text)
+
+    async def probe(self) -> dict[str, Any]:
+        """Make one small real call and report exactly what came back.
+
+        Deliberately no retries and a short timeout: the point is the first
+        upstream status code, not eventual success. An exhausted free-tier
+        quota, a revoked key and a model name that does not exist all look
+        the same to `complete_json` (it returns None), and the OCR pipeline
+        then tells the patient their image was blurred. This says which.
+
+        @returns {ok, reason, http_status, detail} -- detail is a short
+                 upstream snippet, never the API key.
+        """
+        payload = {
+            "model": self._model,
+            "max_tokens": 16,
+            "temperature": 0,
+            "messages": [{"role": "user", "content": "Reply with the word ok."}],
+        }
+        try:
+            async with httpx.AsyncClient(timeout=min(self._timeout, 20.0)) as client:
+                response = await client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+        except httpx.HTTPError as exc:
+            return {
+                "ok": False,
+                "reason": "unreachable",
+                "http_status": None,
+                "detail": str(exc)[:200],
+            }
+
+        if response.status_code == 200:
+            return {
+                "ok": True,
+                "reason": None,
+                "http_status": 200,
+                "detail": None,
+            }
+
+        return {
+            "ok": False,
+            "reason": _REASONS.get(response.status_code, "upstream_error"),
+            "http_status": response.status_code,
+            "detail": response.text[:300],
+        }
 
     async def _post_with_retries(self, payload: dict[str, Any]) -> httpx.Response | None:
         """POST the request, retrying the failures that are worth retrying.

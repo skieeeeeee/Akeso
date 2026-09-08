@@ -98,11 +98,26 @@ class TestNullProvider:
 
     def test_it_is_the_default(self):
         assert get_provider().name == "none"
-        assert provider_status() == {
-            "provider": "none",
-            "available": False,
-            "detail": None,
-        }
+        status = provider_status()
+        assert status["provider"] == "none"
+        assert status["available"] is False
+        assert status["detail"] is None
+
+    def test_status_never_carries_the_api_key(self):
+        """It reports the model and endpoint, and only whether a key is set."""
+        status = provider_status()
+        assert status["key_present"] is False
+        assert "ai_api_key" not in status
+        assert not any(
+            isinstance(value, str) and value.startswith(("sk-", "sk_", "AQ."))
+            for value in status.values()
+        )
+
+    @pytest.mark.asyncio
+    async def test_it_says_it_is_unconfigured_when_probed(self):
+        probe = await NullProvider().probe()
+        assert probe["ok"] is False
+        assert probe["reason"] == "not_configured"
 
 
 class TestGrokParsing:
@@ -240,3 +255,93 @@ class TestTransientFailuresAreRetried:
         )
         assert result is None
         assert len(calls) == grok_provider._MAX_ATTEMPTS
+
+
+class TestTheProbeSaysWhy:
+    """`complete_json` hides why a call failed; the probe must not.
+
+    A deployment reported `available: true` while every request failed, and
+    the OCR pipeline turned that into "the image may be too blurred" for the
+    patient. The configuration was reachable only through the logs. The probe
+    exists so that takes one request instead of an afternoon.
+    """
+
+    def _provider(self):
+        from app.services.ai import grok_provider
+
+        return grok_provider.GrokProvider(
+            api_key="secret-key", model="m", base_url="https://example.invalid/v1", timeout=5
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status,reason",
+        [
+            (401, "bad_key"),
+            (404, "model_or_endpoint_not_found"),
+            (429, "quota_or_rate_limit"),
+            (400, "bad_request"),
+            (418, "upstream_error"),
+        ],
+    )
+    async def test_it_names_the_upstream_failure(self, monkeypatch, status, reason):
+        import httpx
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(status, text="upstream said no")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        probe = await self._provider().probe()
+        assert probe["ok"] is False
+        assert probe["reason"] == reason
+        assert probe["http_status"] == status
+
+    @pytest.mark.asyncio
+    async def test_it_reports_success(self, monkeypatch):
+        import httpx
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        probe = await self._provider().probe()
+        assert probe == {"ok": True, "reason": None, "http_status": 200, "detail": None}
+
+    @pytest.mark.asyncio
+    async def test_it_does_not_retry(self, monkeypatch):
+        """The first status code is the diagnosis; retrying only hides it."""
+        import httpx
+
+        calls = []
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            calls.append(url)
+            return httpx.Response(429, text="quota")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        await self._provider().probe()
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_it_never_returns_the_api_key(self, monkeypatch):
+        import httpx
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(401, text="invalid key")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        probe = await self._provider().probe()
+        assert "secret-key" not in repr(probe)
+
+    @pytest.mark.asyncio
+    async def test_an_unreachable_endpoint_is_reported_not_raised(self, monkeypatch):
+        import httpx
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            raise httpx.ConnectError("no route to host")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        probe = await self._provider().probe()
+        assert probe["ok"] is False
+        assert probe["reason"] == "unreachable"
+        assert probe["http_status"] is None

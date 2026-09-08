@@ -18,15 +18,40 @@ from app.modules.interview.schemas import (
     TranscriptView,
 )
 from app.modules.patient.models import Patient
-from app.services.ai import provider_status
+from app.services.ai import get_provider, provider_status
 
 router = APIRouter(prefix="/interview", tags=["interview"])
+
+
+# What the patient-facing UI is allowed to know. The rest of
+# `provider_status()` describes the deployment, not the patient's session.
+_PUBLIC_STATUS_FIELDS = ("provider", "available", "detail")
 
 
 @router.get("/ai-status")
 def ai_status() -> dict:
     """Whether AI assistance is active. The UI explains this to the patient."""
-    return provider_status()
+    status = provider_status()
+    return {key: status[key] for key in _PUBLIC_STATUS_FIELDS if key in status}
+
+
+@router.get("/ai-status/diagnostics")
+async def ai_diagnostics(patient: Patient = Depends(current_patient)) -> dict:
+    """Prove whether this deployment's AI configuration actually works.
+
+    `available: true` above only means a provider name and a key are set. It
+    stayed true on a deployment where every single call failed, and the OCR
+    pipeline reported that as "the image may be too blurred" — a patient-
+    facing message that pointed at the photo instead of the configuration.
+    This makes one real upstream call and reports the status code, so that
+    class of failure takes one request to identify rather than an afternoon.
+
+    Signed-in only, and it never returns the API key — only whether one is
+    set, plus the model and endpoint the deployment is using.
+    """
+    status = provider_status()
+    provider = get_provider()
+    return {**status, "probe": await provider.probe()}
 
 
 @router.post("/start", response_model=InterviewView)

@@ -51,7 +51,14 @@ async def process(db: Session, document: Document) -> Document:
     try:
         result = await run_ocr(path, document.mime_type)
     except OcrUnavailable as exc:
-        log.info("OCR unavailable for %s: %s", document.id, exc)
+        # The technical trail goes to the log; only the plain sentence goes
+        # into `processing_error`, which the patient reads.
+        log.info(
+            "OCR unavailable for %s: %s (%s)",
+            document.id,
+            exc,
+            getattr(exc, "technical", None) or "no detail",
+        )
         document.processing_status = ProcessingStatus.FAILED
         document.processing_error = (
             f"{exc} Your document is saved and your doctor can still see it. "
