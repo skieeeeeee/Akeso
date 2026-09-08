@@ -54,10 +54,7 @@ export function LoginPage() {
     onSuccess: (result) => {
       setChallenge(result);
       setStage("code");
-      // There is no SMS gateway, so the server hands the code back. Filling
-      // the field is the honest presentation: the patient can see it, change
-      // it, and continue — without a banner announcing the mechanism.
-      setCode(result.prototype_code ?? "");
+      setCode("");
     },
   });
 
@@ -249,7 +246,7 @@ export function LoginPage() {
 
                     <Field
                       label={t("codeLabel")}
-                      hint={challenge?.is_prototype_delivery ? t("codeNoSms") : undefined}
+                      hint={t("codeHint")}
                       required
                       error={errorOf(verify.error)}
                     >

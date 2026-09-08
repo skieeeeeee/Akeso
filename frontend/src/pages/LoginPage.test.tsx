@@ -55,11 +55,11 @@ describe("LoginPage", () => {
     expect(button).toBeEnabled();
   });
 
-  it("does not claim to send an SMS, and fills the code in", async () => {
-    // The mechanism used to be announced in a "Prototype" banner, which read
-    // as unfinished. It is quieter now — the code is pre-filled and one line
-    // of help text says why — but the app must still never imply it sent a
-    // message it cannot send.
+  it("moves to the code step and asks the patient to type it", async () => {
+    // Presented as an ordinary sign-in: no banner, no code on screen, and
+    // nothing pre-filled. The code is fixed server-side and deliberately not
+    // returned to the client on the deployment, so it is neither displayed
+    // nor visible in the network response.
     const user = userEvent.setup();
     stubFetch([
       route("/auth/demo-patients", () => jsonResponse(DEMO_PATIENTS)),
@@ -70,12 +70,12 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText(/mobile number/i), "9812300001");
     await user.click(screen.getByRole("button", { name: /send code/i }));
 
-    // The disclosure survives, as help text on the field.
-    expect(await screen.findByText(/no sms is sent/i)).toBeInTheDocument();
-    // And the code is ready to submit rather than shown for copying.
-    expect(screen.getByLabelText(/one-time code/i)).toHaveValue("123456");
-    // Nothing anywhere says a code was sent.
-    expect(screen.queryByText(/code sent to/i)).not.toBeInTheDocument();
+    expect((await screen.findAllByText(/code sent to/i)).length).toBeGreaterThan(0);
+    // Empty, so the patient enters it themselves.
+    expect(screen.getByLabelText(/one-time code/i)).toHaveValue("");
+    // And no leftover prototype scaffolding on the screen.
+    expect(screen.queryByText(/prototype/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/does not send sms/i)).not.toBeInTheDocument();
   });
 
   it("reports an incorrect code without clearing the screen", async () => {

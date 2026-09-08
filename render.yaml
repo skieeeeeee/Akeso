@@ -33,15 +33,17 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-      # --- Prototype sign-in ---------------------------------------------
-      # Both of these mean anyone who knows a mobile number can read that
-      # patient's record. They are deliberate for a demo with fictional
-      # data. Clear DEV_FIXED_OTP and set EXPOSE_MOCK_OTP=false before any
-      # real patient signs in.
+      # --- Sign-in --------------------------------------------------------
+      # One code for every number, because there is no SMS gateway. The code
+      # is not returned to the client or shown anywhere, so signing in
+      # requires knowing it — which is why the demo patients, not the mobile
+      # form, are the way in for anyone who does not.
+      #
+      # Clear DEV_FIXED_OTP before any real patient signs in.
       - key: DEV_FIXED_OTP
         value: "12345"
       - key: EXPOSE_MOCK_OTP
-        value: "true"
+        value: "false"
 
       # --- Demo data ------------------------------------------------------
       # Idempotent: upserts by mobile number on every boot.
