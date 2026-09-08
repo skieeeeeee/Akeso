@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Accessibility is applied at the document root, so every component inherits
+ * it without any component knowing about modes:
+ *   data-font-size = normal | large | extra_large   -> rem scale
+ *   data-contrast  = normal | high                  -> palette swap
+ *   data-mode      = standard | easy                -> spacing + sizing
+ */
+
+:root {
+  /* Healthcare blue: trustworthy, familiar, calm. */
+  --c-primary: 16 99 168;
+  --c-primary-hover: 12 79 137;
+  --c-primary-soft: 232 242 251;
+  --c-primary-ink: 10 62 106;
+
+  --c-canvas: 244 247 250;
+  --c-surface: 255 255 255;
+  --c-surface-muted: 248 250 252;
+  --c-line: 214 224 233;
+
+  --c-ink: 15 34 51;
+  --c-ink-muted: 71 92 110;
+  --c-ink-subtle: 111 132 149;
+
+  --c-success: 21 128 61;
+  --c-success-soft: 234 247 238;
+  --c-success-ink: 14 88 42;
+
+  --c-warning: 180 83 9;
+  --c-warning-soft: 254 246 231;
+  --c-warning-ink: 124 55 5;
+
+  /* Red is reserved for urgent or critical states only. */
+  --c-danger: 185 28 28;
+  --c-danger-soft: 253 240 240;
+  --c-danger-ink: 136 19 19;
+
+  font-size: 16px;
+}
+
+:root[data-font-size="large"] {
+  font-size: 18.5px;
+}
+
+:root[data-font-size="extra_large"] {
+  font-size: 21.5px;
+}
+
+/* High contrast: darker ink, stronger lines, deeper primary. */
+:root[data-contrast="high"] {
+  --c-primary: 8 61 122;
+  --c-primary-hover: 5 44 89;
+  --c-primary-soft: 224 236 250;
+  --c-primary-ink: 4 38 77;
+
+  --c-canvas: 255 255 255;
+  --c-surface: 255 255 255;
+  --c-surface-muted: 240 244 248;
+  --c-line: 71 92 110;
+
+  --c-ink: 0 0 0;
+  --c-ink-muted: 32 45 58;
+  --c-ink-subtle: 55 70 84;
+
+  --c-success-ink: 8 61 30;
+  --c-warning-ink: 92 41 4;
+  --c-danger-ink: 110 12 12;
+}
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+
+  body {
+    @apply bg-canvas text-ink antialiased;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Noto Sans Devanagari",
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Focus must always be visible — keyboard and switch users depend on it. */
+  :focus-visible {
+    @apply outline-none ring-4 ring-primary/35 ring-offset-2 ring-offset-surface;
+  }
+
+  :root[data-contrast="high"] :focus-visible {
+    @apply ring-4 ring-primary/70;
+  }
+
+  /* Hindi renders slightly small at the same px size. */
+  :root[lang="hi"] body {
+    font-size: 1.03em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer base {
+  /* The landing nav is sticky, so an in-page anchor must stop below it
+     rather than scrolling the heading underneath. */
+  [id] {
+    scroll-margin-top: 6rem;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}
+
+@layer components {
+  /* Screen-reader-only, but focusable (skip links). */
+  .sr-only-focusable {
+    @apply absolute h-px w-px overflow-hidden;
+    clip: rect(0 0 0 0);
+  }
+  .sr-only-focusable:focus {
+    @apply static h-auto w-auto overflow-visible;
+    clip: auto;
+  }
+}
