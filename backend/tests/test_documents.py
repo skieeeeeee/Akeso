@@ -180,7 +180,9 @@ class TestLetterhead:
         )
         assert head["facility"] == "SHRI SAI POLYCLINIC"
         assert head["clinician"] == "Dr. A. R. Mehta"
-        assert head["qualifications"] == "MBBS, MD"
+        # The parenthetical is kept: "MD (Medicine)" says what the doctor
+        # actually practises, which is the useful half.
+        assert head["qualifications"] == "MBBS, MD (Medicine)"
 
     def test_it_reads_a_lab_report_and_a_department(self):
         assert extraction.letterhead("CITY DIAGNOSTIC LABORATORY\nNABL Accredited")[
@@ -432,3 +434,74 @@ class TestAFailedReadTellsThePatientNothingTechnical:
             await ocr_provider.run_ocr(image, "image/jpeg")
 
         assert "ai_vision: returned no text" in caught.value.technical
+
+
+class TestARealHandwrittenPrescription:
+    """The exact vision-model transcription of a real handwritten slip.
+
+    Kept verbatim because it is the document that motivated this work: the
+    local engine read it as "m.Gopinatt / ysnng / 1ay/ho / P.veascolon". Two
+    things it exposed are asserted here — a qualification set on its own line
+    under the name, and a clinic number written as two groups of five.
+    """
+
+    TEXT = (
+        "Dr. M. Gopinath\n"
+        "MD(DVL)\n"
+        "Timings: Morning: Monday, Wednesday & Friday\n"
+        "Sunday Closed\n"
+        "Clinic No.: 92480 02500 / 23222500 between 4-00 to 8-00 PM\n"
+        "01/08/18\n"
+        "Suresh\n"
+        "19yrs/m\n"
+        "DP. versicolor\n"
+        "Rx\n"
+        "(1) Cap. Itaspor 200mg x 10 days\n"
+        "(2) Episcent cream for A Morn\n"
+        "(3) Lamifin cream for A Night\n"
+        "(4) Nizoclin Soap\n"
+        "(5) Tab. Lejet/Safecet 5mg x 15 days\n"
+        "R/A 15 days"
+    )
+
+    def test_the_clinician_and_speciality_are_read(self):
+        head = extraction.letterhead(self.TEXT)
+        assert head["clinician"] == "Dr. M. Gopinath"
+        assert head["qualifications"] == "MD(DVL)"
+
+    def test_the_clinic_number_is_read(self):
+        assert extraction.letterhead(self.TEXT)["phone"] == "9248002500"
+
+    def test_the_timings_line_is_not_mistaken_for_the_facility(self):
+        head = extraction.letterhead(self.TEXT)
+        assert "facility" not in head, "this slip names no clinic; a blank is correct"
+
+    def test_the_patient_name_is_left_blank_rather_than_guessed(self):
+        """"Suresh" is unlabelled, and a wrong name shown as fact is worse."""
+        assert "patient_name" not in extraction.letterhead(self.TEXT)
+
+    def test_the_date_is_read(self):
+        assert str(extraction.document_date(self.TEXT)) == "2018-08-01"
+
+    def test_it_is_recognised_as_a_prescription(self):
+        assert extraction.detect_type(self.TEXT).value == "prescription"
+
+    @pytest.mark.asyncio
+    async def test_every_medicine_is_extracted(self):
+        findings, _ = await extraction.extract(self.TEXT)
+        medicines = {
+            f.value for f in findings if f.entity_type.value == "medication"
+        }
+        assert "Itaspor" in medicines
+        # Topical forms are medicines too; they were dropped before.
+        assert "Episcent cream" in medicines
+        assert "Lamifin cream" in medicines
+        assert "Nizoclin Soap" in medicines
+        assert "Lejet/Safecet" in medicines
+
+    @pytest.mark.asyncio
+    async def test_doses_and_durations_ride_along(self):
+        findings, _ = await extraction.extract(self.TEXT)
+        itaspor = next(f for f in findings if f.value == "Itaspor")
+        assert itaspor.attributes["dose"] == "200 mg"
+        assert itaspor.attributes["duration"] == "10 days"

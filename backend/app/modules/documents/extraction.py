@@ -394,7 +394,11 @@ _PATIENT = re.compile(
     r"^\s*(?:patient(?:'?s)?\s*name|patient|name)\s*[:\-]\s*([^\n]{2,60})$",
     re.I | re.M,
 )
-_PHONE = re.compile(r"\b(?:\+?91[\s-]?)?([6-9]\d{9})\b")
+# Indian mobile numbers are as often written "92480 02500" as contiguous,
+# so a single space or hyphen after the fifth digit is allowed. Searched only
+# in the letterhead region: a lab report's result column contains plenty of
+# five-digit pairs that are not phone numbers.
+_PHONE = re.compile(r"\b(?:\+?91[\s-]?)?([6-9]\d{4})[\s-]?(\d{5})\b")
 
 # A letterhead's contact line often names the clinic ("Call Clinic No.: …"),
 # which made it look like the facility. Digits and a contact word together are
@@ -452,12 +456,26 @@ def letterhead(text: str) -> dict[str, str]:
 
     # Clinician: requires an explicit "Dr", so a mangled name on its own is
     # never promoted to a doctor's name.
-    for line in lines[:8]:
+    for index, line in enumerate(lines[:8]):
         match = _DOCTOR.search(line)
         if match:
             name = _QUALIFICATION.sub("", match[1])
             found["clinician"] = _clean(f"Dr. {_clean(name)}")
-            quals = _QUALIFICATION.findall(line)
+            # group(0) keeps the parenthetical: "MD (Medicine)" and "MD(DVL)"
+            # say what the doctor actually practises, which on a dermatology
+            # prescription is the most useful word on the page.
+            quals = [m[0].strip() for m in _QUALIFICATION.finditer(line)]
+            if not quals:
+                # Very commonly set on its own line directly under the name.
+                # Only accepted when the line is nothing but qualifications,
+                # so a diagnosis or a drug can never be read as one.
+                following = lines[index + 1] if index + 1 < len(lines) else ""
+                if following and len(following) <= 40:
+                    matches = list(_QUALIFICATION.finditer(following))
+                    consumed = sum(len(m[0]) for m in matches)
+                    residue = _clean(_QUALIFICATION.sub("", following).strip(" ,.;/&-"))
+                    if matches and consumed and not residue:
+                        quals = [m[0].strip() for m in matches]
             if quals:
                 found["qualifications"] = ", ".join(dict.fromkeys(quals))
             found["_clinician_line"] = line
@@ -478,8 +496,8 @@ def letterhead(text: str) -> dict[str, str]:
     if labelled_patient:
         found["patient_name"] = _clean(labelled_patient[1])
 
-    phone = _PHONE.search(text)
+    phone = _PHONE.search("\n".join(lines[:8]))
     if phone:
-        found["phone"] = phone[1]
+        found["phone"] = f"{phone[1]}{phone[2]}"
 
     return {key: value for key, value in found.items() if value}

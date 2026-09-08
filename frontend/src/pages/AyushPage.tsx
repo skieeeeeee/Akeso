@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Dictate } from "@/components/ui/Dictate";
 import { Field, Textarea } from "@/components/ui/Field";
 import { OptionCard, OptionGrid } from "@/components/ui/OptionCard";
 import { ProgressBar } from "@/components/ui/Progress";
@@ -244,12 +245,22 @@ export function AyushPage() {
           <CardBody>
             <Field label={t("medicalHeading")} hint={t("optional")}>
               {({ inputId }) => (
-                <Textarea
-                  id={inputId}
-                  rows={3}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                />
+                <div className="space-y-2">
+                  <Textarea
+                    id={inputId}
+                    rows={3}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                  />
+                  {/* The longest free text in onboarding, and the one most
+                      likely to be described rather than typed. */}
+                  <Dictate
+                    label={t("medicalHeading")}
+                    onText={(said) =>
+                      setNotes((current) => [current, said].filter(Boolean).join(" ").trim())
+                    }
+                  />
+                </div>
               )}
             </Field>
           </CardBody>

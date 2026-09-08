@@ -7,6 +7,7 @@ import { StepLayout } from "@/components/layout/StepLayout";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Dictate } from "@/components/ui/Dictate";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { EmptyState, Spinner } from "@/components/ui/States";
 import { DocumentCard } from "@/features/documents/DocumentCard";
@@ -92,13 +93,19 @@ export function RecordsPage() {
 
         <Field label={t("recordsTitleLabel")} hint={t("recordsTitleHint")}>
           {({ inputId, describedBy }) => (
-            <Input
-              id={inputId}
-              aria-describedby={describedBy}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="e.g. Blood Test, Prescription 2026"
-            />
+            <div className="space-y-2">
+              <Input
+                id={inputId}
+                aria-describedby={describedBy}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="e.g. Blood Test, Prescription 2026"
+              />
+              <Dictate
+                label={t("recordsTitleLabel")}
+                onText={(said) => setTitle((current) => [current, said].filter(Boolean).join(" ").trim())}
+              />
+            </div>
           )}
         </Field>
       </div>

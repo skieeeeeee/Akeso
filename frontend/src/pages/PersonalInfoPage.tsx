@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { StepLayout } from "@/components/layout/StepLayout";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Dictate } from "@/components/ui/Dictate";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { OptionCard, OptionGrid } from "@/components/ui/OptionCard";
 import { ApiError, api } from "@/services/apiClient";
@@ -103,13 +104,23 @@ export function PersonalInfoPage() {
 
         <Field label={t("fullNameLabel")} hint={t("fullNameHint")} required>
           {({ inputId, describedBy }) => (
-            <Input
-              id={inputId}
-              aria-describedby={describedBy}
-              autoComplete="name"
-              value={form.full_name}
-              onChange={(event) => set("full_name", event.target.value)}
-            />
+            <div className="space-y-2">
+              <Input
+                id={inputId}
+                aria-describedby={describedBy}
+                autoComplete="name"
+                value={form.full_name}
+                onChange={(event) => set("full_name", event.target.value)}
+              />
+              {/* The very first field in the product. A patient who cannot
+                  type should not be stopped at their own name. */}
+              <Dictate
+                label={t("fullNameLabel")}
+                onText={(said) =>
+                  set("full_name", [form.full_name, said].filter(Boolean).join(" ").trim())
+                }
+              />
+            </div>
           )}
         </Field>
 
@@ -183,12 +194,23 @@ export function PersonalInfoPage() {
 
           <Field label={t("emergencyNameLabel")}>
             {({ inputId }) => (
-              <Input
-                id={inputId}
-                autoComplete="off"
-                value={form.emergency_contact_name}
-                onChange={(event) => set("emergency_contact_name", event.target.value)}
-              />
+              <div className="space-y-2">
+                <Input
+                  id={inputId}
+                  autoComplete="off"
+                  value={form.emergency_contact_name}
+                  onChange={(event) => set("emergency_contact_name", event.target.value)}
+                />
+                <Dictate
+                  label={t("emergencyNameLabel")}
+                  onText={(said) =>
+                    set(
+                      "emergency_contact_name",
+                      [form.emergency_contact_name, said].filter(Boolean).join(" ").trim(),
+                    )
+                  }
+                />
+              </div>
             )}
           </Field>
 
@@ -207,12 +229,23 @@ export function PersonalInfoPage() {
 
           <Field label={t("emergencyRelationLabel")} hint={t("emergencyRelationHint")}>
             {({ inputId, describedBy }) => (
-              <Input
-                id={inputId}
-                aria-describedby={describedBy}
-                value={form.emergency_contact_relation}
-                onChange={(event) => set("emergency_contact_relation", event.target.value)}
-              />
+              <div className="space-y-2">
+                <Input
+                  id={inputId}
+                  aria-describedby={describedBy}
+                  value={form.emergency_contact_relation}
+                  onChange={(event) => set("emergency_contact_relation", event.target.value)}
+                />
+                <Dictate
+                  label={t("emergencyRelationLabel")}
+                  onText={(said) =>
+                    set(
+                      "emergency_contact_relation",
+                      [form.emergency_contact_relation, said].filter(Boolean).join(" ").trim(),
+                    )
+                  }
+                />
+              </div>
             )}
           </Field>
         </div>

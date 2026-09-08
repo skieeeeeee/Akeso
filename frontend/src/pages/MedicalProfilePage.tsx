@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
+import { Dictate } from "@/components/ui/Dictate";
 import { Input } from "@/components/ui/Field";
 import { ProgressBar } from "@/components/ui/Progress";
 import { LoadingPanel } from "@/components/ui/States";
@@ -169,6 +170,19 @@ export function MedicalProfilePage() {
           {t("add")}
         </Button>
       </form>
+
+      {/* An allergy or a long medicine name is exactly what a patient who
+          cannot type wants to say out loud. Adds to the box rather than
+          submitting, so it can still be corrected before it is saved. */}
+      <Dictate
+        label={s(section.title)}
+        onText={(said) =>
+          setTyped((current) => ({
+            ...current,
+            [section.key]: [current[section.key], said].filter(Boolean).join(" ").trim(),
+          }))
+        }
+      />
 
       {/* Quick-pick suggestions keep this usable for low-literacy patients. */}
       {section.suggestions.length > 0 && (
