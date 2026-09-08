@@ -633,6 +633,21 @@ fictional data and do not enter real health information.** There is no SMS
 gateway in this codebase, so turning them off leaves demo sign-in as the only
 way in until one is added.
 
+### Two remotes
+
+Render builds from `skieeeeeee/Akeso`; the shared repo is
+`utkarshdabral/Akeso`. Pushing to only one leaves the deployment building
+stale code, so `origin` is configured to push to both at once:
+
+```bash
+git remote set-url --add --push origin https://github.com/utkarshdabral/Akeso
+git remote set-url --add --push origin https://github.com/skieeeeeee/Akeso
+```
+
+`git push origin main` then updates both — it reports a result per remote.
+Fetches still come from `utkarshdabral` alone. Anyone cloning fresh gets a
+single remote and should run the two commands above.
+
 ### Free-tier caveats
 
 - **Uploads do not persist.** Render free instances have no disk, so
