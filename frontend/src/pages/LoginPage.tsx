@@ -54,7 +54,10 @@ export function LoginPage() {
     onSuccess: (result) => {
       setChallenge(result);
       setStage("code");
-      setCode("");
+      // There is no SMS gateway, so the server hands the code back. Filling
+      // the field is the honest presentation: the patient can see it, change
+      // it, and continue — without a banner announcing the mechanism.
+      setCode(result.prototype_code ?? "");
     },
   });
 
@@ -244,24 +247,9 @@ export function LoginPage() {
                       </p>
                     </div>
 
-                    {/* Prototype OTP helper: rendered cleanly when prototype delivery is active */}
-                    {challenge?.is_prototype_delivery && challenge.prototype_code && (
-                      <Alert tone="info" title={t("prototypeNoticeTitle")}>
-                        <p className="text-sm">{t("prototypeNoticeBody")}</p>
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-xs font-medium uppercase tracking-wider text-ink-subtle">
-                            OTP:
-                          </span>
-                          <span className="font-mono text-xl font-bold tracking-[0.25em] text-primary-ink">
-                            {challenge.prototype_code}
-                          </span>
-                        </div>
-                      </Alert>
-                    )}
-
                     <Field
                       label={t("codeLabel")}
-                      hint={t("codeHint")}
+                      hint={challenge?.is_prototype_delivery ? t("codeNoSms") : undefined}
                       required
                       error={errorOf(verify.error)}
                     >

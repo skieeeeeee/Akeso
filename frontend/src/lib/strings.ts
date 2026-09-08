@@ -84,8 +84,20 @@ export const STRINGS = {
   // --- Login -------------------------------------------------------------
   loginHeading: { en: "Sign in", hi: "साइन इन करें" },
   loginBody: {
-    en: "Enter your mobile number and we will send a one-time code.",
-    hi: "अपना मोबाइल नंबर दर्ज करें, हम एक बार का कोड भेजेंगे।",
+    en: "Enter your mobile number to continue.",
+    hi: "जारी रखने के लिए अपना मोबाइल नंबर दर्ज करें।",
+    mr: "पुढे जाण्यासाठी तुमचा मोबाइल क्रमांक टाका.",
+    ta: "தொடர உங்கள் கைபேசி எண்ணை உள்ளிடுங்கள்.",
+    gu: "આગળ વધવા તમારો મોબાઇલ નંબર નાખો.",
+    pa: "ਅੱਗੇ ਵਧਣ ਲਈ ਆਪਣਾ ਮੋਬਾਈਲ ਨੰਬਰ ਪਾਓ।",
+  },
+  codeNoSms: {
+    en: "No SMS is sent in this demonstration — the code is filled in for you.",
+    hi: "इस प्रदर्शन में कोई एसएमएस नहीं भेजा जाता — कोड आपके लिए भर दिया गया है।",
+    mr: "या प्रात्यक्षिकात एसएमएस पाठवला जात नाही — कोड तुमच्यासाठी भरला आहे.",
+    ta: "இந்த விளக்கத்தில் எஸ்எம்எஸ் அனுப்பப்படுவதில்லை — குறியீடு உங்களுக்காக நிரப்பப்பட்டுள்ளது.",
+    gu: "આ નિદર્શનમાં એસએમએસ મોકલાતો નથી — કોડ તમારા માટે ભરી દેવાયો છે.",
+    pa: "ਇਸ ਪ੍ਰਦਰਸ਼ਨ ਵਿੱਚ ਐਸਐਮਐਸ ਨਹੀਂ ਭੇਜਿਆ ਜਾਂਦਾ — ਕੋਡ ਤੁਹਾਡੇ ਲਈ ਭਰ ਦਿੱਤਾ ਗਿਆ ਹੈ।",
   },
   mobileLabel: { en: "Mobile number", hi: "मोबाइल नंबर" },
   mobileHint: { en: "10-digit number, for example 98765 43210", hi: "10 अंकों का नंबर, जैसे 98765 43210" },
@@ -104,7 +116,14 @@ export const STRINGS = {
   verifying: { en: "Verifying…", hi: "सत्यापित हो रहा है…" },
   resendCode: { en: "Send a new code", hi: "नया कोड भेजें" },
   changeNumber: { en: "Use a different number", hi: "दूसरा नंबर उपयोग करें" },
-  codeSentTo: { en: "Code sent to", hi: "कोड भेजा गया" },
+  codeSentTo: {
+    en: "Signing in as",
+    hi: "इस नंबर से साइन इन",
+    mr: "या क्रमांकाने साइन इन",
+    ta: "இந்த எண்ணில் உள்நுழைவு",
+    gu: "આ નંબરથી સાઇન ઇન",
+    pa: "ਇਸ ਨੰਬਰ ਨਾਲ ਸਾਈਨ ਇਨ",
+  },
   prototypeNoticeTitle: { en: "Prototype", hi: "प्रोटोटाइप" },
   prototypeNoticeBody: {
     en: "This demonstration does not send SMS. Use the code shown below.",

@@ -55,7 +55,11 @@ describe("LoginPage", () => {
     expect(button).toBeEnabled();
   });
 
-  it("is explicit that no SMS is sent in the prototype", async () => {
+  it("does not claim to send an SMS, and fills the code in", async () => {
+    // The mechanism used to be announced in a "Prototype" banner, which read
+    // as unfinished. It is quieter now — the code is pre-filled and one line
+    // of help text says why — but the app must still never imply it sent a
+    // message it cannot send.
     const user = userEvent.setup();
     stubFetch([
       route("/auth/demo-patients", () => jsonResponse(DEMO_PATIENTS)),
@@ -66,8 +70,12 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText(/mobile number/i), "9812300001");
     await user.click(screen.getByRole("button", { name: /send code/i }));
 
-    expect(await screen.findByText(/does not send sms/i)).toBeInTheDocument();
-    expect(screen.getByText("123456")).toBeInTheDocument();
+    // The disclosure survives, as help text on the field.
+    expect(await screen.findByText(/no sms is sent/i)).toBeInTheDocument();
+    // And the code is ready to submit rather than shown for copying.
+    expect(screen.getByLabelText(/one-time code/i)).toHaveValue("123456");
+    // Nothing anywhere says a code was sent.
+    expect(screen.queryByText(/code sent to/i)).not.toBeInTheDocument();
   });
 
   it("reports an incorrect code without clearing the screen", async () => {
