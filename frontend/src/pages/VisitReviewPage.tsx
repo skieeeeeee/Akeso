@@ -53,6 +53,9 @@ export function VisitReviewPage() {
   const { t, s, v } = useI18n();
   const { isEasyMode } = usePreferences();
   const { encounterId = "" } = useParams();
+  // Which kind of code the server produced. It changes what the screen
+  // promises the patient, so it is read from the response, never assumed.
+  const [handoffKind, setHandoffKind] = useState<"link" | "data" | null>(null);
   const navigate = useNavigate();
 
   const [confirmation, setConfirmation] = useState<Confirmation>({
@@ -118,14 +121,18 @@ export function VisitReviewPage() {
               </span>
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold text-ink">{t("handoffHeading")}</h1>
-                <p className="mx-auto max-w-xl text-lg text-ink-muted">{t("handoffBody")}</p>
+                <p className="mx-auto max-w-xl text-lg text-ink-muted">
+                  {handoffKind === "data" ? t("handoffBodyOffline") : t("handoffBody")}
+                </p>
               </div>
 
               {/* The visit itself, in a code. This used to say the visit had
                   been "sent" and ask the patient to wait — but nothing was
                   delivered anywhere a clinician could see, so they were
                   waiting for something that was never going to arrive. */}
-              {encounterId && <HandoffCode encounterId={encounterId} />}
+              {encounterId && (
+                <HandoffCode encounterId={encounterId} onKind={setHandoffKind} />
+              )}
 
               <p className="mx-auto max-w-xl text-sm text-ink-subtle">
                 {t("handoffPrivacy")}

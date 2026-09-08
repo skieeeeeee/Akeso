@@ -76,6 +76,26 @@ def get(db: Session, patient: Patient, encounter_id: uuid.UUID) -> Encounter:
     return encounter
 
 
+def get_for_handoff(db: Session, encounter_id: uuid.UUID) -> Encounter:
+    """One visit, looked up without a patient to scope it.
+
+    Every other read here is scoped by patient, which is what stops one
+    patient reading another's record. This one cannot be: the caller is a
+    clinician with no account, holding a signed token that names this single
+    encounter. The token is the authorisation, so it must be verified before
+    calling this — and this function is deliberately named so that a future
+    reader cannot mistake it for a general-purpose lookup.
+    """
+    encounter = db.scalar(
+        select(Encounter)
+        .where(Encounter.id == encounter_id)
+        .options(selectinload(Encounter.red_flags), selectinload(Encounter.documents))
+    )
+    if encounter is None:
+        raise NotFoundError("Visit")
+    return encounter
+
+
 def active_encounter(db: Session, patient: Patient) -> Encounter | None:
     """The visit still being filled in, if any. Resuming beats restarting."""
     return db.scalar(

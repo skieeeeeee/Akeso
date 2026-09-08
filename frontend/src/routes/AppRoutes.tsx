@@ -4,6 +4,7 @@ import { WelcomePage } from "@/pages/WelcomePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { AbhaPage } from "@/pages/AbhaPage";
 import { PersonalInfoPage } from "@/pages/PersonalInfoPage";
+import { ScannedVisitPage } from "@/pages/ScannedVisitPage";
 import { AssessmentPage } from "@/pages/AssessmentPage";
 import { PreferencesPage } from "@/pages/PreferencesPage";
 import { ConsentPage } from "@/pages/ConsentPage";
@@ -74,6 +75,11 @@ export function AppRoutes() {
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
 
       {/* Legacy/short links people may type. */}
+      {/* Scanned from the patient's QR code by a clinician who has no account
+          here. Outside RequireAuth on purpose: the token in the URL is the
+          authorisation, it names one visit, and it expires within the hour. */}
+      <Route path="/handoff/:token" element={<ScannedVisitPage />} />
+
       <Route path="/onboarding" element={<Navigate to="/onboarding/abha" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

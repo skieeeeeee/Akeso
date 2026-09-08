@@ -500,6 +500,43 @@ Base path `/api/v1`; interactive docs at `/docs`. **56 endpoints.**
 | `GET` | `.../{id}/status`, `/timeline` |
 | `GET`/`PUT` | `/ayush/content`, `/ayush` |
 
+### Handing the visit to the clinician
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/encounters/{id}/handoff` | The clinician-facing document as JSON |
+| `GET` | `/encounters/{id}/handoff.svg` | That document as a QR code |
+| `GET` | `/encounters/handoff/{token}` | The full visit, for whoever scanned it |
+
+When the visit is submitted the patient is shown a QR code instead of being
+told to wait. What the code contains depends on `PUBLIC_WEB_URL`:
+
+| `PUBLIC_WEB_URL` | The code holds | Scanning it | Trade-off |
+| --- | --- | --- | --- |
+| set | a link | opens the visit as a page | needs the internet; shows everything |
+| unset | the visit data | shows JSON in the camera app | works offline; only what fits |
+
+The link is strongly preferred. A URL is a couple of hundred bytes, so the
+code drops from a 133-module grid to 73 — far easier to scan — and the page
+can show every answer and all the ayurvedic findings rather than the subset
+that fitted. `X-Handoff-Kind` on the SVG response says which kind was made,
+so the screen can tell the patient the truth about where their record goes.
+
+The token in a handoff link **is** the credential: the clinician holding the
+phone has no account here, and asking them to make one mid-consultation would
+defeat the purpose. It is therefore deliberately narrow — signed, scoped to
+one encounter, read-only, and expiring after `HANDOFF_LINK_TTL_MINUTES`
+(default 30). A patient session cannot be used as a handoff token and a
+handoff token cannot be used as a session; `current_patient` rejects any token
+carrying a scope claim rather than relying on its subject failing to match a
+patient row.
+
+What never crosses into either form: the criteria that fired a red flag, the
+patient's mobile number, and their ABHA id. The first is the existing
+red-flag boundary; the other two are what would make a photographed code
+linkable to other records. A code that carries the data is unencrypted health
+information in an image — the screen says so plainly — so a deployment
+serving real patients should keep `PUBLIC_WEB_URL` set and shorten the TTL.
+
 ### Speech & operations
 | Method | Path | Purpose |
 | --- | --- | --- |

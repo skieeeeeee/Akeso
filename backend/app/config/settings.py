@@ -125,6 +125,20 @@ class Settings(BaseSettings):
     upload_dir: Path = BACKEND_ROOT / "var" / "uploads"
     max_upload_bytes: int = 10 * 1024 * 1024
 
+    # --- Visit handoff -----------------------------------------------------
+    # Where the web app is served, used to build the link inside the handoff
+    # QR code. Unset means the code carries the visit data itself instead,
+    # which works with no network but holds less.
+    public_web_url: str | None = None
+    # A handoff link is a capability: whoever holds it can read that one
+    # visit. It is meant to live only as long as the consultation, so it
+    # expires quickly and the patient can always show a fresh code.
+    handoff_link_ttl_minutes: int = 30
+
+    @property
+    def handoff_links_enabled(self) -> bool:
+        return bool(self.public_web_url)
+
     # --- CORS --------------------------------------------------------------
     cors_origins: list[str] = [
         "http://localhost:5173",

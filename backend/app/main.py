@@ -96,6 +96,11 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # A browser cannot read a response header cross-origin unless it is
+        # named here, and the handoff screen needs this one to know whether
+        # the code it just fetched carries a link or the visit data — which
+        # decides what it tells the patient will happen when it is scanned.
+        expose_headers=["X-Handoff-Kind"],
     )
 
     _warn_about_prototype_auth()

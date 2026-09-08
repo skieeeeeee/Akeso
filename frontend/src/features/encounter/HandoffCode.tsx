@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Maximize2, X } from "lucide-react";
 
 import { Alert } from "@/components/ui/Alert";
@@ -24,11 +24,25 @@ import { useI18n } from "@/providers/I18nProvider";
  * It carries the visit itself, not a link, so the clinician's phone needs no
  * network and no app beyond its camera.
  */
-export function HandoffCode({ encounterId }: { encounterId: string }) {
+export function HandoffCode({
+  encounterId,
+  onKind,
+}: {
+  encounterId: string;
+  /** Reports whether the code carries a link or the visit data itself. */
+  onKind?: (kind: "link" | "data") => void;
+}) {
   const { t } = useI18n();
   const [svg, setSvg] = useState<string | null>(null);
+  // "link" opens a page on the clinician's phone; "data" carries the visit
+  // inside the code itself. The two make different promises to the patient,
+  // so the screen must not guess.
+  const [kind, setKind] = useState<"link" | "data" | null>(null);
   const [failed, setFailed] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
+
+  const onKindRef = useRef(onKind);
+  onKindRef.current = onKind;
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +55,13 @@ export function HandoffCode({ encounterId }: { encounterId: string }) {
         );
         if (!response.ok) throw new Error(String(response.status));
         const markup = await response.text();
-        if (!cancelled) setSvg(markup);
+        const header = response.headers.get("x-handoff-kind");
+        if (!cancelled) {
+          setSvg(markup);
+          const resolved = header === "link" || header === "data" ? header : null;
+          setKind(resolved);
+          if (resolved) onKindRef.current?.(resolved);
+        }
       } catch {
         if (!cancelled) setFailed(true);
       }
@@ -93,6 +113,10 @@ export function HandoffCode({ encounterId }: { encounterId: string }) {
           height={544}
         />
       </div>
+
+      {kind === "data" && (
+        <p className="text-center text-sm text-ink-subtle">{t("handoffOfflineNote")}</p>
+      )}
 
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Button variant="secondary" size="md" onClick={() => setEnlarged(true)}>

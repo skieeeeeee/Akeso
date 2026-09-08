@@ -51,7 +51,9 @@ from app.modules.encounter.models import Encounter
 from app.modules.encounter.script import ENCOUNTER_SCRIPT
 from app.modules.patient.models import Patient
 from app.modules.red_flags import service as red_flag_service
+from app.config import settings
 from app.shared.enums import AnswerKind, Language
+from app.shared.security import create_handoff_token, decode_handoff_token
 
 # Well under the ~2.2 KB a QR can physically hold, and deliberately so.
 #
@@ -72,6 +74,30 @@ QR_BUDGET_BYTES = 1200
 DISCLAIMER = "Patient-reported before consultation. Not a diagnosis."
 
 SCHEMA_VERSION = 1
+
+# For the examination groups whose entries carry no term of their own.
+AYUSH_GROUP_LABELS = {
+    "ahara": "Diet (ahara)",
+    "vihara": "Daily routine (vihara)",
+    "lifestyle": "Lifestyle",
+    "dashavidha": "Dashavidha",
+    "ashtasthana": "Ashtasthana",
+}
+
+# Re-exported so the router reads tokens through this module rather than
+# reaching into the shared security helpers directly.
+__all__ = [
+    "DISCLAIMER",
+    "QR_BUDGET_BYTES",
+    "SCHEMA_VERSION",
+    "QrTooLarge",
+    "as_svg",
+    "as_svg_of",
+    "build",
+    "code_for",
+    "decode_handoff_token",
+    "link_for",
+]
 
 
 class QrTooLarge(ValueError):
@@ -103,12 +129,17 @@ def _encode(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
 
-def build(db: Session, patient: Patient, encounter: Encounter) -> dict[str, Any]:
+def build(
+    db: Session, patient: Patient, encounter: Encounter, *, fit: bool = True
+) -> dict[str, Any]:
     """Assemble the clinician-facing document for one visit.
 
-    @returns a JSON-ready dict that fits `QR_BUDGET_BYTES` once encoded. When
-             the visit was too long to fit whole, `trimmed` lists what was
-             left out, so the clinician knows to ask rather than assuming
+    @param fit trim to `QR_BUDGET_BYTES` so the whole document can live inside
+               a QR code. False when it will be fetched over the network and
+               rendered as a page, where nothing has to be left out — that is
+               the reason to prefer a link when one can be built.
+    @returns a JSON-ready dict. When trimming was needed, `trimmed` lists what
+             was left out, so the clinician knows to ask rather than assuming
              there was nothing more.
     """
     existing = service.existing_context(db, patient, encounter)
@@ -137,8 +168,18 @@ def build(db: Session, patient: Patient, encounter: Encounter) -> dict[str, Any]
     recorded = ayush_service.recorded_for_review(
         ayush_service.get(db, patient), Language.ENGLISH
     )
+    # The dashavidha and ashtasthana groups carry a Sanskrit term. The ahara
+    # (diet) and vihara (daily routine) ones carry neither term nor question
+    # — they are free-standing observations — so the group names them. Using
+    # the term blindly left a clinician four findings with no label at all.
     ayurveda: list[list[str]] = [
-        [entry["term"], entry["answer"]] for entry in (recorded or {}).get("entries", [])
+        [
+            entry.get("term")
+            or entry.get("question")
+            or AYUSH_GROUP_LABELS.get(entry.get("group", ""), "Finding"),
+            entry["answer"],
+        ]
+        for entry in (recorded or {}).get("entries", [])
     ]
 
     state = red_flag_service.state_for(db, encounter)
@@ -183,7 +224,7 @@ def build(db: Session, patient: Patient, encounter: Encounter) -> dict[str, Any]
         "note": DISCLAIMER,
     }
 
-    return _fit(payload)
+    return _fit(payload) if fit else payload
 
 
 def _fit(payload: dict[str, Any]) -> dict[str, Any]:
@@ -238,6 +279,11 @@ def _fit(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def as_svg(payload: dict[str, Any]) -> bytes:
+    """Render the payload itself as a QR code. See `as_svg_of`."""
+    return as_svg_of(_encode(payload).decode())
+
+
+def as_svg_of(text: str) -> bytes:
     """Render the payload as a QR code in SVG.
 
     SVG rather than PNG for two reasons: it needs no image library, so this
@@ -261,15 +307,45 @@ def as_svg(payload: dict[str, Any]) -> bytes:
         border=4,
         box_size=10,
     )
-    code.add_data(_encode(payload).decode())
+    code.add_data(text)
     try:
         code.make(fit=True)
     except DataOverflowError as exc:  # pragma: no cover - build() prevents this
         raise QrTooLarge(
-            f"{len(_encode(payload))} bytes will not fit in a QR code."
+            f"{len(text.encode())} bytes will not fit in a QR code."
         ) from exc
 
     image = code.make_image(image_factory=qrcode.image.svg.SvgPathImage)
     buffer = io.BytesIO()
     image.save(buffer)
     return buffer.getvalue()
+
+
+def link_for(encounter: Encounter) -> str | None:
+    """The URL a clinician's phone opens after scanning.
+
+    @returns None when no public web address is configured, which is the
+             signal to put the visit data in the code instead.
+    """
+    if not settings.handoff_links_enabled:
+        return None
+    token = create_handoff_token(str(encounter.id))
+    return f"{settings.public_web_url.rstrip('/')}/handoff/{token}"
+
+
+def code_for(
+    db: Session, patient: Patient, encounter: Encounter
+) -> tuple[bytes, str]:
+    """The QR code for this visit, and which kind it turned out to be.
+
+    Prefers a link: a URL is a few dozen bytes, so the code stays sparse and
+    scans from across a room, and the page it opens can show the whole visit
+    rather than the part that fitted. Falls back to carrying the data when no
+    public address is configured, which still works with no network at all.
+
+    @returns (svg, "link" | "data")
+    """
+    link = link_for(encounter)
+    if link is not None:
+        return as_svg_of(link), "link"
+    return as_svg(build(db, patient, encounter)), "data"

@@ -28,6 +28,12 @@ def current_patient(
         raise AuthenticationError("Please sign in to continue.")
     try:
         payload = decode_access_token(credentials.credentials)
+        # A scoped token is a capability for one narrow thing — a visit
+        # handoff link, say — and must never stand in for a session. Rejecting
+        # it explicitly rather than relying on its subject failing to match a
+        # patient row keeps that a rule instead of a coincidence.
+        if payload.get("scope") is not None:
+            raise AuthenticationError("Please sign in to continue.")
         patient_id = uuid.UUID(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         raise AuthenticationError("Your session has expired. Please sign in again.")

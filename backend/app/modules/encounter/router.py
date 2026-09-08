@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+import jwt
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,7 @@ from app.modules.medical_history.structured import section_labels
 from app.modules.patient.models import Patient
 from app.modules.ayush import service as ayush_service
 from app.modules.red_flags import service as red_flag_service
+from app.shared.errors import AuthenticationError
 from app.shared.i18n import Localised, t
 from app.shared.enums import (
     AnswerKind,
@@ -251,13 +253,47 @@ def visit_handoff_qr(
     patient: Patient = Depends(current_patient),
     db: Session = Depends(get_db),
 ) -> Response:
-    """The same document as a QR code the clinician scans."""
+    """A QR code the clinician scans.
+
+    Carries a link to the summary page when a public web address is
+    configured, and the visit data itself otherwise. `X-Handoff-Kind` says
+    which, so the screen can explain what will happen when it is scanned.
+    """
     encounter = service.get(db, patient, encounter_id)
-    svg = handoff.as_svg(handoff.build(db, patient, encounter))
+    svg, kind = handoff.code_for(db, patient, encounter)
     return Response(
         content=svg,
         media_type="image/svg+xml",
-        # Regenerated per request: it carries a timestamp, and a cached copy
-        # of someone's medical record is not something to leave in a proxy.
-        headers={"Cache-Control": "no-store"},
+        headers={
+            # Never cached: a link expires, a payload carries a timestamp, and
+            # neither belongs in a proxy that serves other people.
+            "Cache-Control": "no-store",
+            "X-Handoff-Kind": kind,
+        },
     )
+
+
+@router.get("/handoff/{token}")
+def scanned_handoff(token: str, db: Session = Depends(get_db)) -> dict:
+    """The visit summary, for whoever scanned the code.
+
+    Deliberately unauthenticated: the clinician holding the phone has no
+    account here, and asking them to make one at the moment of a consultation
+    would defeat the point. The token in the URL *is* the credential — it
+    grants read access to exactly this one visit and expires within the hour.
+
+    Nothing is trimmed here. That is the advantage of a link over a code that
+    carries its own data: a page can show every answer and every finding.
+
+    @raises AuthenticationError when the token is missing, altered, expired,
+            or is not a handoff token.
+    """
+    try:
+        encounter_id = uuid.UUID(handoff.decode_handoff_token(token))
+    except (jwt.PyJWTError, ValueError):
+        raise AuthenticationError(
+            "This code has expired. Please ask the patient to show a new one."
+        )
+
+    encounter = service.get_for_handoff(db, encounter_id)
+    return handoff.build(db, encounter.patient, encounter, fit=False)

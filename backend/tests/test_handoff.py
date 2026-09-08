@@ -311,3 +311,158 @@ class TestTheCodeCanActuallyBeRead:
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         code, _matrix = self._matrix(data)
         assert code.version <= 28, f"version {code.version} is too dense to scan reliably"
+
+
+class TestScanningOpensThePage:
+    """The QR carries a link when a public web address is configured.
+
+    Preferred over carrying the data because a URL is a few dozen bytes: the
+    code drops from a 133-module grid to 73, and the page it opens can show
+    every answer and all twenty-six ayurvedic findings instead of the part
+    that fitted.
+    """
+
+    def _with_public_url(self, monkeypatch, url="https://example.test"):
+        from app.config import settings as live
+
+        monkeypatch.setattr(live, "public_web_url", url)
+
+    def test_the_code_carries_a_link(self, client: TestClient, api: str, db, monkeypatch):
+        headers, encounter_id = completed_visit(client, api, db)
+        self._with_public_url(monkeypatch)
+
+        response = client.get(
+            f"{api}/encounters/{encounter_id}/handoff.svg", headers=headers
+        )
+        assert response.status_code == 200
+        assert response.headers["x-handoff-kind"] == "link"
+
+    def test_it_falls_back_to_the_data_when_no_address_is_configured(
+        self, client: TestClient, api: str, db, monkeypatch
+    ):
+        """Still works with no network at all, which is the point of the fallback."""
+        headers, encounter_id = completed_visit(client, api, db)
+        self._with_public_url(monkeypatch, None)
+
+        response = client.get(
+            f"{api}/encounters/{encounter_id}/handoff.svg", headers=headers
+        )
+        assert response.headers["x-handoff-kind"] == "data"
+
+    def test_the_scanned_page_needs_no_account_and_trims_nothing(
+        self, client: TestClient, api: str, db
+    ):
+        headers, encounter_id = completed_visit(client, api, db)
+        signed = client.get(
+            f"{api}/encounters/{encounter_id}/handoff", headers=headers
+        ).json()
+
+        from app.shared.security import create_handoff_token
+
+        token = create_handoff_token(encounter_id)
+        # No Authorization header: the clinician has no account here.
+        scanned = client.get(f"{api}/encounters/handoff/{token}")
+
+        assert scanned.status_code == 200
+        full = scanned.json()
+        assert "trimmed" not in full, "a page has no size limit to trim for"
+        assert full["complaint"] == signed["complaint"]
+        # The code had to reduce these to counts; the page does not.
+        assert isinstance(full["documents"], list)
+        assert isinstance(full["ayurveda"], list)
+
+    def test_the_boundary_still_holds_on_the_open_page(
+        self, client: TestClient, api: str, db
+    ):
+        """An unauthenticated page is the last place to relax the rules."""
+        seed_returning(db)
+        headers = sign_in_demo(client, api, "standard")
+        opening = start_visit(client, api, headers)
+        encounter_id = opening["encounter_id"]
+        answer_until(
+            client,
+            api,
+            headers,
+            encounter_id,
+            {**ORDINARY, "e_complaint": "Crushing chest pain and breathlessness"},
+        )
+
+        from app.shared.security import create_handoff_token
+
+        full = client.get(
+            f"{api}/encounters/handoff/{create_handoff_token(encounter_id)}"
+        ).json()
+        raw = json.dumps(full).lower()
+
+        assert full["safety"]["status"] == "active"
+        assert "criteria" not in raw
+        assert "mobile" not in raw
+        assert "abha" not in raw
+        assert set(full["patient"]) == {"name", "age", "sex"}
+
+
+class TestTheLinkIsANarrowCapability:
+    def test_a_tampered_token_is_refused(self, client: TestClient, api: str, db):
+        _, encounter_id = completed_visit(client, api, db)
+        from app.shared.security import create_handoff_token
+
+        token = create_handoff_token(encounter_id)
+        assert client.get(f"{api}/encounters/handoff/{token}x").status_code == 401
+        assert client.get(f"{api}/encounters/handoff/nonsense").status_code == 401
+
+    def test_an_expired_token_is_refused(self, client: TestClient, api: str, db, monkeypatch):
+        _, encounter_id = completed_visit(client, api, db)
+        from app.config import settings as live
+
+        monkeypatch.setattr(live, "handoff_link_ttl_minutes", -1)
+        from app.shared.security import create_handoff_token
+
+        stale = create_handoff_token(encounter_id)
+        assert client.get(f"{api}/encounters/handoff/{stale}").status_code == 401
+
+    def test_a_patient_session_cannot_be_used_as_a_handoff_link(
+        self, client: TestClient, api: str, db
+    ):
+        """Otherwise a leaked session would open this door too."""
+        seed_returning(db)
+        session = client.post(
+            f"{api}/auth/demo-login", json={"demo_key": "standard"}
+        ).json()["access_token"]
+        assert client.get(f"{api}/encounters/handoff/{session}").status_code == 401
+
+    def test_a_handoff_token_cannot_be_used_as_a_session(
+        self, client: TestClient, api: str, db
+    ):
+        """The dangerous direction: a link is shown to a stranger by design.
+
+        It must not widen into the patient's account, so `current_patient`
+        refuses any token carrying a scope rather than relying on its subject
+        happening not to match a patient row.
+        """
+        _, encounter_id = completed_visit(client, api, db)
+        from app.shared.security import create_handoff_token
+
+        token = create_handoff_token(encounter_id)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        assert client.get(f"{api}/auth/me", headers=headers).status_code == 401
+        assert client.get(f"{api}/patients/me/home", headers=headers).status_code == 401
+        assert (
+            client.get(f"{api}/patients/me/documents", headers=headers).status_code == 401
+        )
+
+    def test_a_token_opens_only_its_own_visit(self, client: TestClient, api: str, db):
+        headers, first = completed_visit(client, api, db)
+        second = start_visit(client, api, headers)["encounter_id"]
+
+        from app.shared.security import create_handoff_token
+
+        opened = client.get(
+            f"{api}/encounters/handoff/{create_handoff_token(first)}"
+        ).json()
+        assert opened["visit"]["date"] is not None
+        # The token names one encounter; it cannot be pointed at another.
+        other = client.get(
+            f"{api}/encounters/handoff/{create_handoff_token(second)}"
+        ).json()
+        assert other["complaint"] != opened["complaint"] or second == first
