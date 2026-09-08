@@ -28,7 +28,83 @@ MAX_CHARACTERS = 600
 
 
 class SpeechUnavailable(RuntimeError):
-    """No audio could be produced. The caller falls back to the browser."""
+    """No audio could be produced. The caller falls back to the browser.
+
+    `str(exc)` is what the patient's client sees, so it stays plain. The
+    other three describe the upstream failure and exist only so `probe` can
+    report which failure it was; they are never sent to a patient.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str = "upstream_error",
+        http_status: int | None = None,
+        technical: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.http_status = http_status
+        self.technical = technical
+
+
+# Named so an operator reading a probe result does not have to look up what
+# ElevenLabs means by each status code.
+_REASONS = {
+    401: "bad_key_or_missing_permission",
+    402: "paid_plan_required",
+    403: "forbidden",
+    404: "voice_not_found",
+    422: "bad_request",
+    429: "quota_or_rate_limit",
+}
+
+
+async def probe() -> dict[str, object]:
+    """Say whether speech actually works right now, and if not, why.
+
+    `synthesise` deliberately collapses every failure into one message,
+    because its caller does the same thing regardless: read the text with the
+    browser voice. That is right for the patient and useless for an operator
+    — a deployment can report `available: true` and fail every request, with
+    no way to tell a key without the text_to_speech permission from a voice
+    the plan may not use. This is the missing half.
+
+    @returns {ok, reason, http_status, detail, voice_id, model} — detail is a
+             short upstream snippet, never the API key.
+    """
+    base: dict[str, object] = {
+        "voice_id": settings.elevenlabs_voice_id,
+        "model": settings.elevenlabs_model,
+        "key_present": bool(settings.elevenlabs_api_key),
+    }
+    if not settings.elevenlabs_api_key:
+        return {
+            **base,
+            "ok": False,
+            "reason": "not_configured",
+            "http_status": None,
+            "detail": "ELEVENLABS_API_KEY is not set on this server.",
+        }
+
+    try:
+        audio = await synthesise("ok", "en")
+    except SpeechUnavailable as exc:
+        return {
+            **base,
+            "ok": False,
+            "reason": exc.reason,
+            "http_status": exc.http_status,
+            "detail": exc.technical or str(exc),
+        }
+    return {
+        **base,
+        "ok": True,
+        "reason": None,
+        "http_status": 200,
+        "detail": f"{len(audio)} bytes of audio",
+    }
 
 
 async def synthesise(text: str, language: str) -> bytes:
@@ -41,11 +117,13 @@ async def synthesise(text: str, language: str) -> bytes:
             an enhancement and must not be able to break a page.
     """
     if not settings.elevenlabs_api_key:
-        raise SpeechUnavailable("Speech is not configured on this server.")
+        raise SpeechUnavailable(
+            "Speech is not configured on this server.", reason="not_configured"
+        )
 
     spoken = " ".join(text.split())[:MAX_CHARACTERS]
     if not spoken:
-        raise SpeechUnavailable("There was nothing to read out.")
+        raise SpeechUnavailable("There was nothing to read out.", reason="empty_text")
 
     url = f"{_API}/{settings.elevenlabs_voice_id}"
     try:
@@ -67,20 +145,33 @@ async def synthesise(text: str, language: str) -> bytes:
             )
     except httpx.HTTPError as exc:
         log.warning("speech request failed (%s): %s", language, exc)
-        raise SpeechUnavailable("We could not reach the speech service.") from exc
+        raise SpeechUnavailable(
+            "We could not reach the speech service.",
+            reason="unreachable",
+            technical=str(exc)[:200],
+        ) from exc
 
     if response.status_code != 200:
         # Quota, a bad key and a bad voice id all mean the same thing to the
-        # caller: read it in the browser instead.
+        # caller: read it in the browser instead. The distinction still gets
+        # recorded, because it is the only thing that tells an operator which
+        # of those three it was.
         log.warning(
             "speech returned %s for %s: %s",
             response.status_code,
             language,
             response.text[:200],
         )
-        raise SpeechUnavailable("The speech service did not return audio.")
+        raise SpeechUnavailable(
+            "The speech service did not return audio.",
+            reason=_REASONS.get(response.status_code, "upstream_error"),
+            http_status=response.status_code,
+            technical=response.text[:300],
+        )
 
     audio = response.content
     if not audio:
-        raise SpeechUnavailable("The speech service returned no audio.")
+        raise SpeechUnavailable(
+            "The speech service returned no audio.", reason="empty_audio", http_status=200
+        )
     return audio

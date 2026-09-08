@@ -8,7 +8,8 @@ speech synthesis and nothing about the interview changes.
 from app.services.speech.provider import (
     MAX_CHARACTERS,
     SpeechUnavailable,
+    probe,
     synthesise,
 )
 
-__all__ = ["MAX_CHARACTERS", "SpeechUnavailable", "synthesise"]
+__all__ = ["MAX_CHARACTERS", "SpeechUnavailable", "probe", "synthesise"]

@@ -121,3 +121,100 @@ class TestEndpoint:
         assert response.status_code == 503
         # A patient-safe message, not an upstream error dump.
         assert "message" in response.json()["error"]
+
+
+class TestTheSpeechProbeSaysWhy:
+    """`/status` reporting available is not evidence that speech works.
+
+    It stayed true on a deployment where every request failed, because the
+    configured voice was a shared library voice the free plan may not use.
+    From outside, that 402 is indistinguishable from a bad key or an
+    exhausted quota, and the patient just silently gets the browser voice.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status,reason",
+        [
+            (401, "bad_key_or_missing_permission"),
+            (402, "paid_plan_required"),
+            (404, "voice_not_found"),
+            (429, "quota_or_rate_limit"),
+            (500, "upstream_error"),
+        ],
+    )
+    async def test_it_names_the_upstream_failure(self, monkeypatch, status, reason):
+        import httpx
+
+        from app.services import speech
+
+        monkeypatch.setattr(speech.provider.settings, "elevenlabs_api_key", "secret-key")
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(status, text="upstream said no")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        result = await speech.probe()
+        assert result["ok"] is False
+        assert result["reason"] == reason
+        assert result["http_status"] == status
+
+    @pytest.mark.asyncio
+    async def test_it_reports_success_with_the_audio_size(self, monkeypatch):
+        import httpx
+
+        from app.services import speech
+
+        monkeypatch.setattr(speech.provider.settings, "elevenlabs_api_key", "secret-key")
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(200, content=b"ID3" + b"\x00" * 500)
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        result = await speech.probe()
+        assert result["ok"] is True
+        assert result["reason"] is None
+        assert "503 bytes" in str(result["detail"])
+
+    @pytest.mark.asyncio
+    async def test_it_says_so_when_no_key_is_set(self, monkeypatch):
+        from app.services import speech
+
+        monkeypatch.setattr(speech.provider.settings, "elevenlabs_api_key", None)
+        result = await speech.probe()
+        assert result["ok"] is False
+        assert result["reason"] == "not_configured"
+        assert result["key_present"] is False
+
+    @pytest.mark.asyncio
+    async def test_it_never_returns_the_api_key(self, monkeypatch):
+        import httpx
+
+        from app.services import speech
+
+        monkeypatch.setattr(speech.provider.settings, "elevenlabs_api_key", "secret-key")
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(401, text="missing permission")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        result = await speech.probe()
+        assert "secret-key" not in repr(result)
+
+    @pytest.mark.asyncio
+    async def test_the_patient_facing_message_stays_plain(self, monkeypatch):
+        """The upstream body must not reach the text a client displays."""
+        import httpx
+
+        from app.services import speech
+
+        monkeypatch.setattr(speech.provider.settings, "elevenlabs_api_key", "k")
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            return httpx.Response(402, text='{"detail":{"status":"paid_plan_required"}}')
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        with pytest.raises(speech.SpeechUnavailable) as caught:
+            await speech.synthesise("hello", "en")
+        assert "paid_plan_required" not in str(caught.value)
+        assert "paid_plan_required" in caught.value.technical

@@ -11,7 +11,7 @@ from pydantic import Field
 
 from app.modules.auth.dependencies import current_patient
 from app.modules.patient.models import Patient
-from app.services.speech import MAX_CHARACTERS, SpeechUnavailable, synthesise
+from app.services.speech import MAX_CHARACTERS, SpeechUnavailable, probe, synthesise
 from app.shared.enums import Language
 from app.shared.errors import UpstreamUnavailableError
 from app.shared.schemas import ApiModel
@@ -36,6 +36,21 @@ def status() -> SpeechStatusOut:
     from app.config import settings
 
     return SpeechStatusOut(available=settings.speech_enabled)
+
+
+@router.get("/diagnostics")
+async def diagnostics(patient: Patient = Depends(current_patient)) -> dict:
+    """Prove whether this deployment can really speak, and if not, why.
+
+    `/status` above only reports whether a key is set. It stayed true on a
+    deployment where every request failed, because the configured voice was
+    a shared library voice the free plan may not use — a 402 that looks
+    identical, from outside, to a bad key or an exhausted quota.
+
+    Signed-in only, spends one very short synthesis, and never returns the
+    API key.
+    """
+    return await probe()
 
 
 @router.post(
