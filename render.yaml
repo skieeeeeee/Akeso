@@ -49,9 +49,14 @@ services:
         value: "true"
 
       # --- Browser origin -------------------------------------------------
-      # Replace with the Vercel domain once it exists. A JSON array.
+      # The frontend's origin, which the browser sends on every API call. A
+      # JSON array, no trailing slashes. Vercel preview deployments each get
+      # their own domain, so add any you need to reach the API from.
+      #
+      # Kept here rather than in the dashboard because this service is
+      # blueprint-managed: a dashboard edit can be reverted by the next sync.
       - key: CORS_ORIGINS
-        value: '["http://localhost:5173"]'
+        value: '["https://akeso-zeta.vercel.app", "http://localhost:5173"]'
 
       # --- Document scanning ----------------------------------------------
       # The OCR models are installed in the image. On the free instance
