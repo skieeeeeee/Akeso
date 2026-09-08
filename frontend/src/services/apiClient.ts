@@ -77,10 +77,28 @@ type RequestOptions = {
   /** Set for multipart uploads, where the browser must set the boundary. */
   formData?: FormData;
   signal?: AbortSignal;
+  /** Retry a failure to reach the server at all. Never a failed response. */
+  retryWhenUnreachable?: boolean;
 };
 
 const NETWORK_MESSAGE =
-  "We could not reach the MediKiosk server. Check the connection and try again.";
+  "We could not reach the MediKiosk server. It may be starting up — please try again in a moment.";
+
+/**
+ * A free Render instance sleeps after inactivity, and the first request to a
+ * sleeping one can fail outright while the container starts. That surfaced to
+ * a patient as "check the connection" — blaming their network for our
+ * hosting — and it was the very first thing they saw, because the login page
+ * loads the demo patients on mount.
+ *
+ * Only a network-level failure is retried: an HTTP error means the server
+ * answered and will answer the same way again. Retries are opt-in per call so
+ * a document upload can never be sent twice.
+ */
+const COLD_START_ATTEMPTS = 3;
+const COLD_START_DELAY_MS = 2500;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = tokenStore.get();
@@ -90,17 +108,29 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers["Content-Type"] = "application/json";
   }
 
-  let response: Response;
-  try {
-    response = await fetch(`${BASE}${path}`, {
-      method: options.method ?? "GET",
-      headers,
-      body: options.formData ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
-      signal: options.signal,
-    });
-  } catch {
-    throw new ApiError(0, NETWORK_MESSAGE, "network_error");
+  const attempts = options.retryWhenUnreachable ? COLD_START_ATTEMPTS : 1;
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      response = await fetch(`${BASE}${path}`, {
+        method: options.method ?? "GET",
+        headers,
+        body:
+          options.formData ??
+          (options.body !== undefined ? JSON.stringify(options.body) : undefined),
+        signal: options.signal,
+      });
+      break;
+    } catch {
+      // An aborted request is the caller changing its mind, not a failure to
+      // reach the server, so it must not be retried.
+      if (options.signal?.aborted || attempt === attempts) {
+        throw new ApiError(0, NETWORK_MESSAGE, "network_error");
+      }
+      await sleep(COLD_START_DELAY_MS * attempt);
+    }
   }
+  if (!response) throw new ApiError(0, NETWORK_MESSAGE, "network_error");
 
   if (response.status === 204) return undefined as T;
 
@@ -142,8 +172,16 @@ export function authHeaders(): Record<string, string> {
 }
 
 export const api = {
-  get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
+  get: <T>(path: string, signal?: AbortSignal) =>
+    request<T>(path, { signal, retryWhenUnreachable: true }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body ?? {} }),
+  /**
+   * A POST that is safe to send again if the server could not be reached.
+   * Use only where repeating the call cannot duplicate anything a patient
+   * would notice — asking for a sign-in code simply issues another one.
+   */
+  postRetryable: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "POST", body: body ?? {}, retryWhenUnreachable: true }),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body }),
   put: <T>(path: string, body: unknown) => request<T>(path, { method: "PUT", body }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),

@@ -47,7 +47,7 @@ export function LoginPage() {
 
   const requestCode = useMutation({
     mutationFn: (value: string) =>
-      api.post<OtpRequestResult>("/auth/otp/request", {
+      api.postRetryable<OtpRequestResult>("/auth/otp/request", {
         mobile_number: value,
         language,
       }),
@@ -86,8 +86,16 @@ export function LoginPage() {
     },
   });
 
-  const errorOf = (error: unknown): string | null =>
-    error instanceof ApiError ? error.message : error ? t("errorGeneric") : null;
+  // A failure to reach the server carries an English message from the API
+  // client, which has no access to the active language. Its code is stable,
+  // so the localised sentence is chosen here instead — otherwise a Hindi or
+  // Tamil patient meets English at the very first screen.
+  const errorOf = (error: unknown): string | null => {
+    if (error instanceof ApiError) {
+      return error.code === "network_error" ? t("errorNetwork") : error.message;
+    }
+    return error ? t("errorGeneric") : null;
+  };
 
   return (
     <AppShell wide showNav={false}>
@@ -396,7 +404,23 @@ export function LoginPage() {
                   </button>
                 ))}
 
-                {demoPatients.data?.length === 0 && (
+                {demoPatients.isError && (
+                  <div className="space-y-2">
+                    <Alert tone="warning">
+                      {errorOf(demoPatients.error) ?? t("demoUnavailable")}
+                    </Alert>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={() => demoPatients.refetch()}
+                      disabled={demoPatients.isFetching}
+                    >
+                      {demoPatients.isFetching ? t("loading") : t("retry")}
+                    </Button>
+                  </div>
+                )}
+
+                {!demoPatients.isError && demoPatients.data?.length === 0 && (
                   <Alert tone="warning">{t("demoUnavailable")}</Alert>
                 )}
               </div>

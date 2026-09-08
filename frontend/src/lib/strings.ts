@@ -809,8 +809,14 @@ export const STRINGS = {
     hi: "कुछ गड़बड़ हो गई। कृपया फिर कोशिश करें।",
   },
   errorNetwork: {
-    en: "We could not reach the server. Check the connection and try again.",
-    hi: "हम सर्वर से संपर्क नहीं कर सके। कनेक्शन जाँचें और फिर कोशिश करें।",
+    // A sleeping free instance fails the first request while it starts, so
+    // "check your connection" blamed the patient's network for our hosting.
+    en: "We could not reach the server. It may be starting up — please try again in a moment.",
+    hi: "हम सर्वर से संपर्क नहीं कर सके। यह शुरू हो रहा हो सकता है — कृपया थोड़ी देर में फिर कोशिश करें।",
+    mr: "आम्ही सर्व्हरशी संपर्क साधू शकलो नाही. तो सुरू होत असावा — कृपया थोड्या वेळाने पुन्हा प्रयत्न करा.",
+    ta: "சேவையகத்தைத் தொடர்பு கொள்ள முடியவில்லை. அது தொடங்கிக் கொண்டிருக்கலாம் — சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்.",
+    gu: "અમે સર્વર સાથે સંપર્ક કરી શક્યા નહીં. તે શરૂ થઈ રહ્યું હોઈ શકે — કૃપા કરીને થોડી વારમાં ફરી પ્રયાસ કરો.",
+    pa: "ਅਸੀਂ ਸਰਵਰ ਨਾਲ ਸੰਪਰਕ ਨਹੀਂ ਕਰ ਸਕੇ। ਇਹ ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੋ ਸਕਦਾ ਹੈ — ਕਿਰਪਾ ਕਰਕੇ ਥੋੜ੍ਹੀ ਦੇਰ ਬਾਅਦ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
   },
   errorSessionExpired: {
     en: "Your session has ended. Please sign in again.",
