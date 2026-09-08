@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, FastAPI
+import logging
+
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -48,6 +50,32 @@ def build_router() -> APIRouter:
     return api
 
 
+def _warn_about_prototype_auth() -> None:
+    """Say plainly, at every startup, that sign-in is not real.
+
+    Both of these are deliberate prototype affordances, and both mean anyone
+    who knows a mobile number can read that patient's record. A deployment
+    that leaves them on should have to see this in its logs.
+    """
+    log = logging.getLogger("medikiosk.startup")
+    if settings.dev_fixed_otp:
+        log.warning(
+            "PROTOTYPE: every mobile number accepts the fixed code %r. "
+            "Set DEV_FIXED_OTP=\"\" before real patients can sign in.",
+            settings.dev_fixed_otp,
+        )
+    if settings.expose_mock_otp:
+        log.warning(
+            "PROTOTYPE: the one-time code is returned in the API response. "
+            "Set EXPOSE_MOCK_OTP=false before real patients can sign in."
+        )
+    if settings.jwt_secret.startswith("dev-only"):
+        log.warning(
+            "PROTOTYPE: JWT_SECRET is still the development default. "
+            "Generate one before deploying anywhere reachable."
+        )
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.app_name} API",
@@ -67,6 +95,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    _warn_about_prototype_auth()
 
     register_error_handlers(app)
     app.include_router(build_router())

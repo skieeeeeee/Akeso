@@ -39,7 +39,8 @@ def request_otp(db: Session, mobile_number: str) -> tuple[OtpChallenge, str]:
         OtpChallenge.consumed_at.is_(None),
     ).update({OtpChallenge.consumed_at: datetime.now(UTC)}, synchronize_session=False)
 
-    code = generate_otp()
+    # A fixed code, when the prototype is configured for one.
+    code = settings.dev_fixed_otp or generate_otp()
     challenge = OtpChallenge(
         mobile_number=mobile_number,
         code_hash=hash_otp(mobile_number, code),

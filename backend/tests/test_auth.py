@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
+
 
 class TestOtpRequest:
     def test_issues_a_prototype_code(self, client: TestClient, api: str):
@@ -12,7 +14,11 @@ class TestOtpRequest:
         body = response.json()
         assert body["mobile_number"] == "9812300010"
         assert body["is_prototype_delivery"] is True
-        assert body["prototype_code"] and len(body["prototype_code"]) == 6
+        expected = settings.dev_fixed_otp or None
+        if expected:
+            assert body["prototype_code"] == expected
+        else:
+            assert body["prototype_code"] and len(body["prototype_code"]) == 6
         assert body["expires_in_seconds"] > 0
 
     def test_normalises_how_patients_actually_type_numbers(self, client: TestClient, api: str):
@@ -28,7 +34,14 @@ class TestOtpRequest:
         assert response.status_code == 422
         assert "10-digit" in response.json()["error"]["message"]
 
-    def test_a_new_request_supersedes_the_previous_code(self, client: TestClient, api: str):
+    def test_a_new_request_supersedes_the_previous_code(
+        self, client: TestClient, api: str, monkeypatch
+    ):
+        # Only meaningful with rotating codes: a fixed prototype code is by
+        # definition the same before and after, so requesting a new one cannot
+        # invalidate the old one. That is a real property given up by
+        # DEV_FIXED_OTP, and TestFixedOtp documents the trade.
+        monkeypatch.setattr(settings, "dev_fixed_otp", "")
         first = client.post(
             f"{api}/auth/otp/request", json={"mobile_number": "9812300012"}
         ).json()["prototype_code"]
@@ -166,3 +179,45 @@ class TestDemoSignIn:
         assert body["patient"]["full_name"] == "Rajesh Kumar"
         assert body["patient"]["is_demo"] is True
         assert body["onboarding"]["is_complete"] is True
+
+
+class TestFixedOtp:
+    """The prototype accepts one code for every number.
+
+    Deliberate, so a demo needs no SMS gateway and no reading the code off
+    the screen. These tests pin both halves: that it works, and that clearing
+    the setting restores real random codes.
+    """
+
+    def test_the_fixed_code_signs_in_any_number(self, client: TestClient, api: str):
+        for mobile in ("9812390001", "9812390002"):
+            client.post(f"{api}/auth/otp/request", json={"mobile_number": mobile})
+            response = client.post(
+                f"{api}/auth/otp/verify",
+                json={"mobile_number": mobile, "code": settings.dev_fixed_otp},
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["access_token"]
+
+    def test_a_wrong_code_is_still_rejected(self, client: TestClient, api: str):
+        # The fixed code must not turn verification into a no-op.
+        client.post(f"{api}/auth/otp/request", json={"mobile_number": "9812390003"})
+        response = client.post(
+            f"{api}/auth/otp/verify",
+            json={"mobile_number": "9812390003", "code": "00000"},
+        )
+        assert response.status_code == 401
+
+    def test_clearing_the_setting_restores_random_codes(
+        self, client: TestClient, api: str, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "dev_fixed_otp", "")
+        codes = set()
+        for mobile in ("9812390004", "9812390005", "9812390006"):
+            body = client.post(
+                f"{api}/auth/otp/request", json={"mobile_number": mobile}
+            ).json()
+            codes.add(body["prototype_code"])
+        # Three independent six-digit codes, not one shared constant.
+        assert len(codes) == 3
+        assert all(len(code) == 6 and code.isdigit() for code in codes)

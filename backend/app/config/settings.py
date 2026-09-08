@@ -53,6 +53,16 @@ class Settings(BaseSettings):
     # inside an explicit "prototype mode" notice — never disguised as a real
     # delivery. MUST be false anywhere real patients exist.
     expose_mock_otp: bool = True
+    # A single code accepted for every mobile number, so the prototype can be
+    # demonstrated without an SMS gateway and without reading the code off the
+    # screen each time.
+    #
+    # This removes the only thing standing between a phone number and that
+    # patient's record. It is no weaker than `expose_mock_otp`, which already
+    # hands the real code to the caller — but it is permanent rather than
+    # per-request, so it must be empty anywhere real patients could sign in.
+    # Set to "" to restore random six-digit codes.
+    dev_fixed_otp: str = "12345"
 
     # --- ABHA (mocked) -----------------------------------------------------
     # No ABDM network call exists in this codebase. This flag documents that
