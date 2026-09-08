@@ -472,7 +472,11 @@ describe("VisitReviewPage", () => {
       reviewed_information: true,
       understands_use: true,
     });
-    expect(await screen.findByText(/your visit has been sent/i)).toBeInTheDocument();
+    // The patient used to be told the visit had been "sent" and asked to
+    // wait, while nothing was actually delivered anywhere a clinician could
+    // see it. They are now handed a code to show instead.
+    expect(await screen.findByText(/show this to your doctor/i)).toBeInTheDocument();
+    expect(screen.getByText(/only show this code to your doctor/i)).toBeInTheDocument();
   });
 
   it("an already-submitted visit cannot be submitted again", async () => {

@@ -21,6 +21,7 @@ import { cn } from "@/lib/cn";
 import { ApiError, api } from "@/services/apiClient";
 import { useI18n } from "@/providers/I18nProvider";
 import { usePreferences } from "@/providers/PreferencesProvider";
+import { HandoffCode } from "@/features/encounter/HandoffCode";
 import { UrgentBanner } from "@/features/encounter/SafetyScreen";
 import { ExistingKnowledge } from "./VisitPage";
 import type { EncounterReview, EncounterSubmission } from "@/types/api";
@@ -116,14 +117,28 @@ export function VisitReviewPage() {
                 <CheckCircle2 className="h-11 w-11" />
               </span>
               <div className="space-y-2">
-                <h1 className="text-3xl font-bold text-ink">{t("encounterSubmittedHeading")}</h1>
-                <p className="mx-auto max-w-xl text-lg text-ink-muted">
+                <h1 className="text-3xl font-bold text-ink">{t("handoffHeading")}</h1>
+                <p className="mx-auto max-w-xl text-lg text-ink-muted">{t("handoffBody")}</p>
+              </div>
+
+              {/* The visit itself, in a code. This used to say the visit had
+                  been "sent" and ask the patient to wait — but nothing was
+                  delivered anywhere a clinician could see, so they were
+                  waiting for something that was never going to arrive. */}
+              {encounterId && <HandoffCode encounterId={encounterId} />}
+
+              <p className="mx-auto max-w-xl text-sm text-ink-subtle">
+                {t("handoffPrivacy")}
+              </p>
+
+              <div className="mx-auto w-full max-w-form space-y-2">
+                <Button variant="secondary" size="lg" block asChild>
+                  <Link to="/home">{t("encounterBackHome")}</Link>
+                </Button>
+                <p className="text-sm text-ink-subtle">
                   {message ? s(message) : t("encounterAlreadySubmitted")}
                 </p>
               </div>
-              <Button size="xl" asChild className="mx-auto w-full max-w-form">
-                <Link to="/home">{t("encounterBackHome")}</Link>
-              </Button>
             </CardBody>
           </Card>
         </div>

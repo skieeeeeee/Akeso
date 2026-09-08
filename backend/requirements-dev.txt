@@ -10,3 +10,7 @@
 
 pytest==8.3.4
 pytest-asyncio==0.25.2
+
+# Decodes the generated handoff QR code so a test can prove a scanner gets
+# back what we encoded. Runtime never imports it; the test skips if absent.
+opencv-python-headless==5.0.0.93

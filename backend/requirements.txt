@@ -31,3 +31,7 @@ pyjwt==2.10.1
 # Only used when AI_PROVIDER=grok. Kept in the runtime set because the
 # provider module imports it at startup to decide whether it is available.
 httpx==0.28.1
+
+# The visit handoff QR code. Pure Python, and rendered as SVG so it needs no
+# image library — which keeps it out of the optional OCR extras.
+qrcode==8.0

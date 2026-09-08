@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,6 +19,7 @@ from app.modules.encounter.schemas import (
     StartVisitIn,
     TodayAnswer,
 )
+from app.modules.encounter import handoff
 from app.modules.encounter.script import ENCOUNTER_SCRIPT
 from app.modules.medical_history.structured import section_labels
 from app.modules.patient.models import Patient
@@ -221,4 +222,42 @@ def submit_visit(
         priority=encounter.priority,
         submitted_at=encounter.submitted_at,
         message=SUBMITTED_URGENT if urgent else SUBMITTED_MESSAGE,
+    )
+
+
+@router.get("/{encounter_id}/handoff")
+def visit_handoff(
+    encounter_id: uuid.UUID,
+    patient: Patient = Depends(current_patient),
+    db: Session = Depends(get_db),
+) -> dict:
+    """The clinician-facing document that goes into the QR code.
+
+    Exposed as JSON as well as an image so the patient can see exactly what
+    they are about to show someone — a QR whose contents you cannot read is a
+    poor thing to ask anyone to trust with their medical history.
+    """
+    encounter = service.get(db, patient, encounter_id)
+    return handoff.build(db, patient, encounter)
+
+
+@router.get(
+    "/{encounter_id}/handoff.svg",
+    responses={200: {"content": {"image/svg+xml": {}}}},
+    response_class=Response,
+)
+def visit_handoff_qr(
+    encounter_id: uuid.UUID,
+    patient: Patient = Depends(current_patient),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The same document as a QR code the clinician scans."""
+    encounter = service.get(db, patient, encounter_id)
+    svg = handoff.as_svg(handoff.build(db, patient, encounter))
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        # Regenerated per request: it carries a timestamp, and a cached copy
+        # of someone's medical record is not something to leave in a proxy.
+        headers={"Cache-Control": "no-store"},
     )
