@@ -505,3 +505,43 @@ class TestARealHandwrittenPrescription:
         itaspor = next(f for f in findings if f.value == "Itaspor")
         assert itaspor.attributes["dose"] == "200 mg"
         assert itaspor.attributes["duration"] == "10 days"
+
+
+class TestValuesAreFitToShowAPatient:
+    """Two defects seen in real live output on the deployed API.
+
+    Both were cosmetic in the sense that nothing crashed, and neither is
+    cosmetic in the sense that matters: these strings are shown to a patient
+    as what their prescription says, and to a clinician as the patient's
+    record.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_separator_is_not_part_of_the_medicine_name(self):
+        """"Tab. Sucralfate - 10 ml TDS" gave the value "Sucralfate -"."""
+        findings, _ = await extraction.extract(
+            "Rx\n1) Tab. Sucralfate - 10 ml TDS x 10 days\n"
+        )
+        names = [f.value for f in findings if f.entity_type.value == "medication"]
+        assert names == ["Sucralfate"]
+
+    @pytest.mark.asyncio
+    async def test_a_hyphen_inside_a_name_survives(self):
+        findings, _ = await extraction.extract(
+            "Rx\n1) Cap. Co-trimoxazole 480 mg BD x 5 days\n"
+        )
+        assert "Co-trimoxazole" in [f.value for f in findings]
+
+    @pytest.mark.parametrize(
+        "line,expected",
+        [
+            ("Patient: Nitin Jain Age: 34/M", "Nitin Jain"),
+            ("Patient: Vikram Joshi        Age: 54 / M", "Vikram Joshi"),
+            ("Name: A. R. Mehta | Age: 60", "A. R. Mehta"),
+            ("Patient Name: Kamla Devi", "Kamla Devi"),
+            ("Patient: Suresh", "Suresh"),
+        ],
+    )
+    def test_the_name_stops_at_the_next_label(self, line, expected):
+        """The whole remainder of the line used to be stored as the name."""
+        assert extraction.letterhead(line)["patient_name"] == expected

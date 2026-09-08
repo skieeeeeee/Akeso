@@ -197,7 +197,9 @@ def _medication(line: str) -> Finding | None:
     suffix = MED_SUFFIX_FORM.search(body)
     if suffix and not (dose or freq or dur):
         cut = min(cut, suffix.end())
-    name = re.sub(r"[,:;]+$", "", body[:cut]).strip()
+    # Trailing dashes too: "Sucralfate - 10 ml TDS" cuts at the dose and
+    # used to leave the separator behind as part of the name.
+    name = re.sub(r"[,:;\-–—\s]+$", "", body[:cut]).strip()
     if len(name) < 3 or name.isdigit():
         return None
     attributes = {}
@@ -390,8 +392,13 @@ _QUALIFICATION = re.compile(
 )
 # A labelled patient name. Never inferred from an unlabelled line: on a
 # prescription the handwritten name is exactly what OCR gets wrong.
+# Stops at the next label on the same line: a letterhead commonly runs
+# "Patient: Nitin Jain   Age: 34/M   Sex: M", and the whole remainder used to
+# be stored as the name.
 _PATIENT = re.compile(
-    r"^\s*(?:patient(?:'?s)?\s*name|patient|name)\s*[:\-]\s*([^\n]{2,60})$",
+    r"^\s*(?:patient(?:'?s)?\s*name|patient|name)\s*[:\-]\s*"
+    r"([^\n|]{2,60}?)"
+    r"(?=\s*(?:\||[A-Za-z/]{2,}\s*[:\-]|$))",
     re.I | re.M,
 )
 # Indian mobile numbers are as often written "92480 02500" as contiguous,
