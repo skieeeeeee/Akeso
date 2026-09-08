@@ -7,7 +7,19 @@
  */
 import type { Language } from "@/types/api";
 
-const BASE = "/api/v1";
+/**
+ * Where the API lives.
+ *
+ * Empty by default, which keeps every request same-origin: the dev server
+ * proxies `/api`, and a single-origin deployment needs nothing else. Set
+ * `VITE_API_BASE_URL` at build time to point the client at a separately
+ * hosted API — the frontend on Vercel and the API on Render, say — in which
+ * case that origin must also list this one in `CORS_ORIGINS`.
+ *
+ * A trailing slash is stripped so both forms of the variable work.
+ */
+const ORIGIN = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const BASE = `${ORIGIN}/api/v1`;
 const TOKEN_KEY = "medikiosk.token";
 
 export class ApiError extends Error {

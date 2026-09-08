@@ -1,0 +1,73 @@
+# MediKiosk API on Render.
+#
+# The frontend is not here: it is a static Vite build and belongs on Vercel.
+# This file describes the API and its database only.
+#
+# Render's dashboard reads this on "New > Blueprint". Everything below is
+# free-tier except the disk, which is $0 for 1 GB on a paid instance and
+# unavailable on free — see the note on UPLOAD_DIR.
+services:
+  - type: web
+    name: medikiosk-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # --- Database ------------------------------------------------------
+      # Render injects `postgres://…`. The app rewrites that to the psycopg
+      # driver form on load, so this works as-is.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medikiosk-db
+          property: connectionString
+
+      # --- Application ---------------------------------------------------
+      - key: ENVIRONMENT
+        value: development
+      - key: DEBUG
+        value: "false"
+
+      # Generated once by Render and kept across deploys.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # --- Prototype sign-in ---------------------------------------------
+      # Both of these mean anyone who knows a mobile number can read that
+      # patient's record. They are deliberate for a demo with fictional
+      # data. Clear DEV_FIXED_OTP and set EXPOSE_MOCK_OTP=false before any
+      # real patient signs in.
+      - key: DEV_FIXED_OTP
+        value: "12345"
+      - key: EXPOSE_MOCK_OTP
+        value: "true"
+
+      # --- Demo data ------------------------------------------------------
+      # Idempotent: upserts by mobile number on every boot.
+      - key: SEED_DEMO_PATIENTS
+        value: "true"
+
+      # --- Browser origin -------------------------------------------------
+      # Replace with the Vercel domain once it exists. A JSON array.
+      - key: CORS_ORIGINS
+        value: '["http://localhost:5173"]'
+
+      # --- Document scanning ----------------------------------------------
+      # The OCR models are installed in the image. On the free instance
+      # (512 MB RAM) loading them can be tight; set OCR_PROVIDER=off if the
+      # service restarts under memory pressure. Uploads are still stored.
+      - key: OCR_PROVIDER
+        value: auto
+
+      # Free instances have no persistent disk, so uploads live in the
+      # container filesystem and are lost on restart. On a paid instance,
+      # attach a disk and point this at its mount path.
+      - key: UPLOAD_DIR
+        value: /app/var/uploads
+
+databases:
+  - name: medikiosk-db
+    plan: free
+    databaseName: medikiosk
+    user: medikiosk

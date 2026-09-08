@@ -112,3 +112,36 @@ class TestNativeEnumsMatchTheModels:
         assert _labels(migrated_url, "language") >= {
             language.value for language in enums.Language
         }
+
+
+class TestManagedDatabaseUrls:
+    """Managed hosts hand out `postgres://…`; SQLAlchemy needs a driver.
+
+    Render, Railway and Heroku all inject the bare scheme. Without rewriting
+    it, a deploy fails at first connection with an unhelpful parse error, or
+    reaches for psycopg2, which this project does not install.
+    """
+
+    @pytest.mark.parametrize(
+        "given,expected",
+        [
+            (
+                "postgres://u:p@host:5432/db",
+                "postgresql+psycopg://u:p@host:5432/db",
+            ),
+            (
+                "postgresql://u:p@host:5432/db",
+                "postgresql+psycopg://u:p@host:5432/db",
+            ),
+            # Already explicit: left exactly as given.
+            (
+                "postgresql+psycopg://u:p@host:5432/db",
+                "postgresql+psycopg://u:p@host:5432/db",
+            ),
+        ],
+    )
+    def test_the_driver_is_added_when_missing(self, given: str, expected: str):
+        from app.config.settings import Settings
+
+        assert Settings(database_url=given).database_url == expected
+        assert Settings(test_database_url=given).test_database_url == expected

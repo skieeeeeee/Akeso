@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +39,21 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://localhost:5432/medikiosk_test",
     )
     sql_echo: bool = False
+
+    @field_validator("database_url", "test_database_url", mode="after")
+    @classmethod
+    def _use_the_psycopg_driver(cls, value: str) -> str:
+        """Accept the URL shape managed hosts actually hand out.
+
+        Render, Railway, Heroku and friends inject `postgres://…`. SQLAlchemy
+        needs a driver, and this project pins psycopg 3, so both of the bare
+        forms are rewritten rather than failing at connect time with an
+        unhelpful "could not parse" or silently reaching for psycopg2.
+        """
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
 
     # --- Auth --------------------------------------------------------------
     jwt_secret: str = Field(default="dev-only-change-me", min_length=8)

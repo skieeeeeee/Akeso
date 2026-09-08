@@ -16,6 +16,9 @@ RUN apt-get update \
 COPY requirements.txt requirements-ocr.txt ./
 RUN pip install -r requirements.txt -r requirements-ocr.txt
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
@@ -36,4 +39,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
 
 # Migrations are applied on boot so a fresh managed database is usable
 # immediately. `$PORT` is honoured for Railway/Render.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+#
+# SEED_DEMO_PATIENTS=true also loads the four fictional patients. Seeding
+# upserts by mobile number, so this is safe on every restart: it never
+# duplicates a patient and never resets one that has been used.
+CMD ["docker-entrypoint.sh"]
