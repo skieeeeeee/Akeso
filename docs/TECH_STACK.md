@@ -164,3 +164,9 @@ Stated because a stack document that only lists strengths is not useful.
   the service and database on Render.
 - **Uploads do not persist.** Free Render instances have no disk, so
   documents are lost on restart. A paid instance with a mounted disk fixes it.
+- **The local OCR engine does not fit a free instance.** 115 MB at rest,
+  632 MB after reading one document, 822 MB after two — the ONNX runtime
+  keeps its allocation arena. The deployed service runs `OCR_PROVIDER=ai`
+  (vision model only, ~118 MB) for that reason, which means every document
+  goes to the AI provider. `auto` is the better setting wherever there is
+  memory for it.

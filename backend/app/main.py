@@ -78,6 +78,31 @@ def _warn_about_prototype_auth() -> None:
         )
 
 
+def _warn_about_local_ocr_memory() -> None:
+    """Say what the local OCR engine costs, because it is not obvious.
+
+    Measured RSS of this service processing one image document: 115 MB at
+    rest, 632 MB after the first, 822 MB after the second — the ONNX runtime
+    keeps its allocation arena. On a 512 MB instance the first document a
+    patient uploads gets the container killed, which reads as an HTTP health
+    check failure rather than as anything to do with OCR.
+
+    Not an error: on an instance with room it is the better setting, since it
+    keeps clean printed documents local and off the AI provider's quota. But
+    a deployment choosing it should see the number in its logs.
+    """
+    mode = (settings.ocr_provider or "auto").lower()
+    if mode in ("auto", "local"):
+        logging.getLogger("medikiosk.startup").warning(
+            "OCR_PROVIDER=%s loads the local ONNX engine, which needs roughly "
+            "700 MB of headroom once it has read a document. On an instance "
+            "with 512 MB or less, set OCR_PROVIDER=ai to use the vision model "
+            "only (about 120 MB) or OCR_PROVIDER=off to store documents "
+            "without reading them.",
+            mode,
+        )
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.app_name} API",
@@ -104,6 +129,7 @@ def create_app() -> FastAPI:
     )
 
     _warn_about_prototype_auth()
+    _warn_about_local_ocr_memory()
 
     register_error_handlers(app)
     app.include_router(build_router())

@@ -91,8 +91,25 @@ services:
       # The OCR models are installed in the image. On the free instance
       # (512 MB RAM) loading them can be tight; set OCR_PROVIDER=off if the
       # service restarts under memory pressure. Uploads are still stored.
+      # "ai", not "auto", and this is a memory decision rather than a
+      # quality one.
+      #
+      # Measured RSS of this service processing one image document:
+      #   auto (local ONNX engine, then vision):  115 MB -> 632 MB -> 822 MB
+      #   ai   (vision model only):               115 MB -> 118 MB -> 118 MB
+      #
+      # A free instance has 512 MB, so "auto" is killed by the first
+      # document a patient uploads — which is what the HTTP health check
+      # failure was. The local engine is also the weaker reader: it is
+      # trained on print and produced garbage on the handwritten
+      # prescription this feature exists for.
+      #
+      # The cost is real and worth naming: with "ai" every document is sent
+      # to the configured AI provider, where "auto" kept clean printed pages
+      # local. On an instance with more memory, "auto" is the better
+      # setting — it keeps most documents private and off the API quota.
       - key: OCR_PROVIDER
-        value: auto
+        value: ai
 
       # Free instances have no persistent disk, so uploads live in the
       # container filesystem and are lost on restart. On a paid instance,

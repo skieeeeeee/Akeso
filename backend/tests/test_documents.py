@@ -545,3 +545,54 @@ class TestValuesAreFitToShowAPatient:
     def test_the_name_stops_at_the_next_label(self, line, expected):
         """The whole remainder of the line used to be stored as the name."""
         assert extraction.letterhead(line)["patient_name"] == expected
+
+
+class TestTheLocalEngineIsAnnouncedNotAssumed:
+    """The local OCR engine needs ~700 MB once it has read a document.
+
+    On a 512 MB instance the first upload gets the container OOM-killed,
+    which surfaces as an HTTP health check failure with nothing pointing at
+    OCR. A deployment that enables it should see the number in its logs.
+    """
+
+    @pytest.mark.parametrize("mode", ["auto", "local"])
+    def test_it_warns_when_the_local_engine_is_enabled(self, mode, monkeypatch, caplog):
+        from app import main
+        from app.config import settings as live
+
+        monkeypatch.setattr(live, "ocr_provider", mode)
+        with caplog.at_level("WARNING", logger="medikiosk.startup"):
+            main._warn_about_local_ocr_memory()
+        assert any("OCR_PROVIDER" in record.message for record in caplog.records)
+
+    @pytest.mark.parametrize("mode", ["ai", "off"])
+    def test_it_stays_quiet_for_the_low_memory_settings(self, mode, monkeypatch, caplog):
+        from app import main
+        from app.config import settings as live
+
+        monkeypatch.setattr(live, "ocr_provider", mode)
+        with caplog.at_level("WARNING", logger="medikiosk.startup"):
+            main._warn_about_local_ocr_memory()
+        assert not caplog.records
+
+    def test_the_ai_mode_never_touches_the_local_engine(self, monkeypatch):
+        """That is the whole point: the 700 MB is the ONNX runtime."""
+        from app.services.ocr import provider as ocr_provider
+
+        monkeypatch.setattr(ocr_provider.settings, "ocr_provider", "ai")
+
+        def explode(self, path, mime_type):  # noqa: ANN001
+            raise AssertionError("the local engine must not be constructed")
+
+        monkeypatch.setattr(ocr_provider.LocalOcrProvider, "read", explode)
+
+        async def vision(self, path, mime_type):  # noqa: ANN001
+            return ocr_provider.OcrResult(text="read", engine="ai_vision", confidence=0.85)
+
+        monkeypatch.setattr(ocr_provider.AiVisionProvider, "read_async", vision)
+
+        import asyncio
+        from pathlib import Path
+
+        result = asyncio.run(ocr_provider.run_ocr(Path("unused.jpg"), "image/jpeg"))
+        assert result.engine == "ai_vision"

@@ -776,9 +776,23 @@ matters on a mid-range phone over mobile data.
   `UPLOAD_DIR` at its mount path.
 - **Cold starts.** A free instance sleeps after inactivity; the first request
   can take ~50 seconds.
-- **Memory.** 512 MB is tight with the OCR models loaded. If the service
-  restarts under pressure, set `OCR_PROVIDER=off` — uploads are still stored
-  and shown to the clinician.
+- **Memory — the one that actually bites.** Measured RSS of the API while
+  processing one image document:
+
+  | `OCR_PROVIDER` | at rest | after 1 document | after 2 |
+  | --- | --- | --- | --- |
+  | `auto` (local ONNX, then vision) | 115 MB | 632 MB | 822 MB |
+  | `ai` (vision model only) | 115 MB | 118 MB | 118 MB |
+
+  A free instance has 512 MB, so `auto` is killed by the first document a
+  patient uploads. Render reports that as an **HTTP health check failure**,
+  with nothing in the message pointing at OCR. `render.yaml` therefore sets
+  `OCR_PROVIDER=ai` on the deployed service, and the API logs a warning at
+  every startup when the local engine is enabled.
+
+  The trade-off is real: with `ai`, every document is sent to the configured
+  AI provider, where `auto` kept clean printed pages local and off the API
+  quota. On an instance with more memory, `auto` is the better setting.
 
 ---
 
