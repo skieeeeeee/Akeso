@@ -73,6 +73,10 @@ export function useSpeech() {
   const serverCanSpeak = serverSpeech.data?.available === true;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // True when a request to read something aloud produced no sound at all:
+  // the server could not speak and the browser has no voice for this
+  // language. The UI says so rather than leaving the patient guessing.
+  const [silent, setSilent] = useState(false);
 
   const stop = useCallback(() => {
     const audio = audioRef.current;
@@ -85,10 +89,19 @@ export function useSpeech() {
     setIsSpeaking(false);
   }, [isSupported]);
 
-  /** Read it with the browser's own voice. The fallback, and the default. */
+  /**
+   * Read it with the browser's own voice. The fallback, and the default.
+   *
+   * @returns false when the browser cannot speak this language at all, so a
+   *          caller falling back to it knows the patient heard nothing. Most
+   *          devices have no Marathi, Gujarati or Punjabi voice, which meant
+   *          every server failure turned into unexplained silence for exactly
+   *          the patients who most need the text read aloud.
+   */
   const speakLocally = useCallback(
-    (text: string) => {
-      if (!isSupported || !text.trim()) return;
+    (text: string): boolean => {
+      if (!isSupported || !text.trim()) return false;
+      if (!hasVoice) return false;
       try {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
@@ -99,19 +112,22 @@ export function useSpeech() {
         utterance.onerror = () => setIsSpeaking(false);
         window.speechSynthesis.speak(utterance);
         setIsSpeaking(true);
+        return true;
       } catch {
         setIsSpeaking(false);
+        return false;
       }
     },
-    [isSupported, language],
+    [isSupported, hasVoice, language],
   );
 
   const speak = useCallback(
     (text: string) => {
       const spoken = text.trim();
       if (!spoken) return;
+      setSilent(false);
       if (!serverCanSpeak) {
-        speakLocally(spoken);
+        if (!speakLocally(spoken)) setSilent(true);
         return;
       }
       stop();
@@ -133,13 +149,16 @@ export function useSpeech() {
           };
           audio.onerror = () => {
             setIsSpeaking(false);
-            speakLocally(spoken);
+            if (!speakLocally(spoken)) setSilent(true);
           };
           await audio.play();
         } catch {
-          // Quota, a network blip, a scoped-out key: read it in the browser.
+          // Quota, a concurrency rejection, a network blip: try the browser.
+          // If it has no voice for this language the patient hears nothing,
+          // and being told that is far better than silence they cannot
+          // explain.
           setIsSpeaking(false);
-          speakLocally(spoken);
+          if (!speakLocally(spoken)) setSilent(true);
         }
       })();
     },
@@ -160,6 +179,8 @@ export function useSpeech() {
   return {
     // Server speech needs no browser synthesiser, so it counts as support.
     isSupported: isSupported || serverCanSpeak,
+    /** A read-aloud was asked for and nothing could say it. */
+    silent,
     /**
      * False only when neither the server nor this device can speak the
      * chosen language. Server speech covers all six, so this is true

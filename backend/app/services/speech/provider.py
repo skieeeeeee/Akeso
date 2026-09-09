@@ -12,6 +12,7 @@ own endpoint instead, and the key never leaves the server.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -25,6 +26,16 @@ _API = "https://api.elevenlabs.io/v1/text-to-speech"
 # Long enough for a question and its help text; a whole page is not a use case
 # here and would only run up someone's character quota.
 MAX_CHARACTERS = 600
+
+# Worth retrying. A free ElevenLabs plan allows four concurrent requests, so a
+# patient moving quickly through questions — or a couple of kiosks in one
+# clinic — hits 429 with nothing wrong at all. The AI provider has retried
+# these from the start; speech did not, and every rejection fell through to a
+# browser voice that does not exist for Marathi, Gujarati or Punjabi. So the
+# patient pressed listen and heard silence.
+_RETRYABLE = frozenset({429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY = 0.8
 
 
 class SpeechUnavailable(RuntimeError):
@@ -126,31 +137,49 @@ async def synthesise(text: str, language: str) -> bytes:
         raise SpeechUnavailable("There was nothing to read out.", reason="empty_text")
 
     url = f"{_API}/{settings.elevenlabs_voice_id}"
-    try:
-        async with httpx.AsyncClient(
-            timeout=settings.elevenlabs_timeout_seconds
-        ) as client:
-            response = await client.post(
-                url,
-                headers={
-                    "xi-api-key": settings.elevenlabs_api_key,
-                    "Content-Type": "application/json",
-                    "Accept": "audio/mpeg",
-                },
-                json={
-                    "text": spoken,
-                    "model_id": settings.elevenlabs_model,
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                },
-            )
-    except httpx.HTTPError as exc:
-        log.warning("speech request failed (%s): %s", language, exc)
-        raise SpeechUnavailable(
-            "We could not reach the speech service.",
-            reason="unreachable",
-            technical=str(exc)[:200],
-        ) from exc
+    payload = {
+        "text": spoken,
+        "model_id": settings.elevenlabs_model,
+        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+    }
+    headers = {
+        "xi-api-key": settings.elevenlabs_api_key,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+    }
 
+    delay = _RETRY_BASE_DELAY
+    response: httpx.Response | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(
+                timeout=settings.elevenlabs_timeout_seconds
+            ) as client:
+                response = await client.post(url, headers=headers, json=payload)
+        except httpx.HTTPError as exc:
+            log.warning("speech request failed (%s, attempt %s): %s", language, attempt, exc)
+            if attempt == _MAX_ATTEMPTS:
+                raise SpeechUnavailable(
+                    "We could not reach the speech service.",
+                    reason="unreachable",
+                    technical=str(exc)[:200],
+                ) from exc
+        else:
+            if response.status_code == 200:
+                break
+            if response.status_code not in _RETRYABLE or attempt == _MAX_ATTEMPTS:
+                break
+            log.info(
+                "speech returned %s, retrying in %.1fs (attempt %s/%s)",
+                response.status_code,
+                delay,
+                attempt,
+                _MAX_ATTEMPTS,
+            )
+        await asyncio.sleep(delay)
+        delay *= 2
+
+    assert response is not None  # every other path raised
     if response.status_code != 200:
         # Quota, a bad key and a bad voice id all mean the same thing to the
         # caller: read it in the browser instead. The distinction still gets

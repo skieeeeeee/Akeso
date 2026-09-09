@@ -104,6 +104,17 @@ export function StepLayout({
             </div>
           </div>
 
+          {/* A read-aloud that produced no sound says so. Most phones have no
+              Marathi, Gujarati or Punjabi voice, so when the server cannot
+              speak this was silence with nothing to explain it. */}
+          {speech.silent && (
+            <div className="px-5 pb-1 sm:px-6">
+              <p role="status" className="text-sm text-ink-subtle">
+                {t("ttsNoVoice")}
+              </p>
+            </div>
+          )}
+
           <CardBody className={isEasyMode ? "space-y-6 py-7" : "space-y-5"}>{children}</CardBody>
 
           {(onBack || onNext || secondaryAction || footerNote) && (

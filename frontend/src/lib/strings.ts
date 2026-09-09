@@ -329,9 +329,17 @@ export const STRINGS = {
   voiceAgain: { en: "Say it again", hi: "फिर बोलें" },
   voiceTypeInstead: { en: "Type instead", hi: "टाइप करें" },
   voiceProblem: { en: "Voice input problem", hi: "आवाज़ इनपुट में दिक्कत" },
+  // Shown when a read-aloud produced no sound at all: the server could not
+  // speak and this device has no voice for the language. Most phones have no
+  // Marathi, Gujarati or Punjabi voice, so this is the difference between an
+  // explanation and unexplained silence.
   ttsNoVoice: {
-    en: "This device has no voice for the selected language, so questions cannot be read aloud. All text stays on screen.",
-    hi: "इस डिवाइस में चुनी गई भाषा के लिए आवाज़ उपलब्ध नहीं है, इसलिए सवाल बोलकर नहीं सुनाए जा सकते। सारा टेक्स्ट स्क्रीन पर रहेगा।",
+    en: "This device has no voice for the selected language, so this could not be read aloud. All the text stays on screen.",
+    hi: "इस डिवाइस में चुनी गई भाषा के लिए आवाज़ उपलब्ध नहीं है, इसलिए यह बोलकर नहीं सुनाया जा सका। सारा टेक्स्ट स्क्रीन पर रहेगा।",
+    mr: "या डिव्हाइसमध्ये निवडलेल्या भाषेसाठी आवाज नाही, म्हणून हे वाचून दाखवता आले नाही. सर्व मजकूर स्क्रीनवर राहील.",
+    ta: "இந்த சாதனத்தில் தேர்ந்தெடுத்த மொழிக்கான குரல் இல்லை, எனவே இதை வாசித்துக் காட்ட முடியவில்லை. உரை முழுவதும் திரையில் இருக்கும்.",
+    gu: "આ ઉપકરણમાં પસંદ કરેલી ભાષા માટે અવાજ નથી, તેથી આ વાંચી શકાયું નહીં. બધું લખાણ સ્ક્રીન પર રહેશે.",
+    pa: "ਇਸ ਡਿਵਾਈਸ ਵਿੱਚ ਚੁਣੀ ਹੋਈ ਭਾਸ਼ਾ ਲਈ ਆਵਾਜ਼ ਨਹੀਂ ਹੈ, ਇਸ ਲਈ ਇਹ ਪੜ੍ਹ ਕੇ ਨਹੀਂ ਸੁਣਾਇਆ ਜਾ ਸਕਿਆ। ਸਾਰਾ ਲਿਖਤ ਸਕ੍ਰੀਨ ਉੱਤੇ ਰਹੇਗਾ।",
   },
   voiceUnavailable: {
     en: "Voice input is not available in this browser, so please type or tap your answers.",

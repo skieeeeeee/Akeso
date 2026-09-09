@@ -218,3 +218,78 @@ class TestTheSpeechProbeSaysWhy:
             await speech.synthesise("hello", "en")
         assert "paid_plan_required" not in str(caught.value)
         assert "paid_plan_required" in caught.value.technical
+
+
+class TestAConcurrencyRejectionIsRetried:
+    """A free ElevenLabs plan allows four concurrent requests.
+
+    A patient moving quickly through questions hits 429 with nothing wrong,
+    and every rejection used to fall straight through to a browser voice that
+    does not exist for Marathi, Gujarati or Punjabi — so they pressed listen
+    and heard silence. The AI provider has retried these from the start.
+    """
+
+    def _fast(self, monkeypatch):
+        from app.services.speech import provider
+
+        monkeypatch.setattr(provider, "_RETRY_BASE_DELAY", 0.0)
+        monkeypatch.setattr(provider.settings, "elevenlabs_api_key", "k")
+
+    @pytest.mark.asyncio
+    async def test_a_429_then_success(self, monkeypatch):
+        import httpx
+
+        from app.services import speech
+
+        self._fast(monkeypatch)
+        calls = []
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            calls.append(url)
+            if len(calls) < 3:
+                return httpx.Response(429, text="too many concurrent requests")
+            return httpx.Response(200, content=b"ID3" + b"\x00" * 100)
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        audio = await speech.synthesise("hello", "mr")
+        assert audio.startswith(b"ID3")
+        assert len(calls) == 3, "should have retried twice before succeeding"
+
+    @pytest.mark.asyncio
+    async def test_a_bad_key_is_not_retried(self, monkeypatch):
+        """It will not fix itself, and retrying only delays the fallback."""
+        import httpx
+
+        from app.services import speech
+
+        self._fast(monkeypatch)
+        calls = []
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            calls.append(url)
+            return httpx.Response(401, text="invalid api key")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        with pytest.raises(speech.SpeechUnavailable) as caught:
+            await speech.synthesise("hello", "en")
+        assert caught.value.reason == "bad_key_or_missing_permission"
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_it_gives_up_after_three_attempts(self, monkeypatch):
+        import httpx
+
+        from app.services import speech
+
+        self._fast(monkeypatch)
+        calls = []
+
+        async def post(self, url, **kwargs):  # noqa: ANN001
+            calls.append(url)
+            return httpx.Response(429, text="rate limited")
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", post)
+        with pytest.raises(speech.SpeechUnavailable) as caught:
+            await speech.synthesise("hello", "gu")
+        assert caught.value.reason == "quota_or_rate_limit"
+        assert len(calls) == 3
