@@ -301,6 +301,11 @@ is returned by the API and shown inside an explicit "prototype" notice.
 
 ## Architecture
 
+Every technology here, the alternatives considered and the reason each one
+won: **[docs/TECH_STACK.md](docs/TECH_STACK.md)**. It also lists the gaps
+honestly — no Python linter, no CI, prototype sign-in.
+
+
 A modular monolith on each side of one HTTP boundary.
 
 ```
