@@ -26,7 +26,7 @@ import { cn } from "@/lib/cn";
 import { LANGUAGE_LABELS, useI18n } from "@/providers/I18nProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { StatCounter } from "@/features/landing/StatCounter";
-import { FIGURES_COMPILED, HEADLINE, STATISTICS } from "@/features/landing/statistics";
+import { FIGURES_COMPILED, headline, statistics } from "@/features/landing/statistics";
 import { postLoginRoute } from "@/features/onboarding/steps";
 import type { Language } from "@/types/api";
 
@@ -201,7 +201,7 @@ export function LandingPage() {
             {/* The headline statistic & consultation readiness */}
             <Card className="bg-surface-muted shadow-sm">
               <CardBody className="space-y-5">
-                <StatCounter statistic={HEADLINE} />
+                <StatCounter statistic={headline()} />
                 <div className="rounded-2xl border-2 border-primary/25 bg-primary-soft px-5 py-4">
                   <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-primary-ink">
                     <Clock className="h-4 w-4" aria-hidden="true" />
@@ -229,7 +229,7 @@ export function LandingPage() {
             <div>
               <h3 className="text-lg font-semibold text-ink">{t("landingStatsTitle")}</h3>
               <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {STATISTICS.map((statistic) => (
+                {statistics().map((statistic) => (
                   <Card key={statistic.id}>
                     <CardBody>
                       <StatCounter statistic={statistic} />

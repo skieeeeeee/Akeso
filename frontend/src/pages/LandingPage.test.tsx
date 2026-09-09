@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
-import { HEADLINE, STATISTICS, consultationsInElapsed } from "@/features/landing/statistics";
+import { headline, statistics, consultationsInElapsed } from "@/features/landing/statistics";
 import { jsonResponse, renderWithProviders, route, stubFetch } from "@/test/utils";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -47,7 +47,7 @@ describe("LandingPage", () => {
   it("shows every statistic with its source and year", () => {
     stubFetch(BASE);
     renderWithProviders(<LandingPage />);
-    for (const statistic of [HEADLINE, ...STATISTICS]) {
+    for (const statistic of [headline(), ...statistics()]) {
       expect(screen.getByText(statistic.label.en)).toBeInTheDocument();
       // An unsourced health number is worse than none, so the citation is
       // rendered with the figure rather than in a footnote.

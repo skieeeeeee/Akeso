@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { localised } from "@/services/apiClient";
+import { loadOverlay, overlayReady } from "@/lib/translations";
 import { translate, type StringKey } from "@/lib/strings";
 import { enumLabel } from "@/lib/enumLabels";
 import type { Language, Localised } from "@/types/api";
@@ -58,15 +59,40 @@ function readStoredLanguage(): Language {
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(readStoredLanguage);
+  // Bumped when a translation file finishes loading, so the tree re-renders
+  // with it. `overlay` is read during render and cannot be awaited there.
+  const [loaded, setLoaded] = useState(0);
 
   const setLanguage = useCallback((next: Language) => {
-    setLanguageState(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
       /* preference simply will not persist */
     }
+    // Switch only once the text for it is in hand, so choosing Marathi never
+    // shows a frame of Hindi on the way.
+    if (overlayReady(next)) {
+      setLanguageState(next);
+      return;
+    }
+    void loadOverlay(next).then(() => {
+      setLanguageState(next);
+      setLoaded((n) => n + 1);
+    });
   }, []);
+
+  // The stored or browser-detected language is known before anything renders,
+  // so fetch its file immediately rather than waiting for a switch.
+  useEffect(() => {
+    if (overlayReady(language)) return;
+    let cancelled = false;
+    void loadOverlay(language).then(() => {
+      if (!cancelled) setLoaded((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
 
   // `lang` drives font selection and screen-reader pronunciation.
   useEffect(() => {
@@ -82,7 +108,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       v: (value) => enumLabel(value, language),
       supported: SUPPORTED,
     }),
-    [language, setLanguage],
+    // `loaded` is in here on purpose. Without it the memo returns the same
+    // object after a translation file arrives, so every consumer of the
+    // context keeps the identical value and never re-renders — the text
+    // stayed in the fallback language even though the overlay was in memory.
+    [language, setLanguage, loaded],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

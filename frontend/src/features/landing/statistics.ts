@@ -50,7 +50,23 @@ const t = (en: string, hi: string): Localised => {
   return value;
 };
 
-export const HEADLINE: Statistic = {
+/**
+ * The figures, resolved against whatever translations are loaded now.
+ *
+ * Functions rather than constants because the overlay files are fetched on
+ * demand: built once at module scope, these captured only English and Hindi
+ * and a Tamil landing page silently showed English figures — the exact bug
+ * this file's own comment says it was written to fix.
+ */
+export function headline(): Statistic {
+  return buildHeadline();
+}
+
+export function statistics(): Statistic[] {
+  return buildStatistics();
+}
+
+const buildHeadline = (): Statistic => ({
   id: "consultation-length",
   value: 2,
   unit: t("minutes", "मिनट"),
@@ -65,9 +81,9 @@ export const HEADLINE: Statistic = {
   ),
   source: "Irving et al., BMJ Open",
   year: "2017",
-};
+});
 
-export const STATISTICS: Statistic[] = [
+const buildStatistics = (): Statistic[] => [
   {
     id: "diabetes",
     value: 101,

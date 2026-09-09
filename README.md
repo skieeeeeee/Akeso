@@ -735,6 +735,35 @@ git remote set-url --add --push origin https://github.com/skieeeeeee/Akeso
 Fetches still come from `utkarshdabral` alone. Anyone cloning fresh gets a
 single remote and should run the two commands above.
 
+### Speed, and where it actually goes
+
+Measured from Delhi against the live deployment, on a phone viewport:
+
+| | |
+| --- | --- |
+| First paint | 60-70 ms (Vercel edge) |
+| TCP handshake to the API edge | 6 ms |
+| `/health` — no database work | **270 ms** |
+| Full load of `/home` | ~2.3 s, three API calls |
+
+The gap between 6 ms and 270 ms is the whole story: the edge is next door,
+but the service itself runs in Render's default region, Oregon. Every request
+pays ~265 ms of transit, and a page makes three. `render.yaml` records what
+moving it to Singapore would cost.
+
+What the code can do about it, and does:
+
+- **Routes are split.** The landing, language and sign-in screens are in the
+  main bundle; everything past sign-in is fetched when first opened.
+- **Translations load per language.** The four regional files are ~245 KB of
+  source between them and every patient was downloading all four. An English
+  or Hindi patient now downloads none, and choosing Marathi fetches one
+  ~15 KB chunk.
+
+Together those took the first download from **205 KB to 121 KB gzipped** —
+41% less before anything on screen is usable, which is the number that
+matters on a mid-range phone over mobile data.
+
 ### Free-tier caveats
 
 - **Uploads do not persist.** Render free instances have no disk, so

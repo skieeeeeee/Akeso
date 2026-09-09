@@ -1,27 +1,36 @@
+import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LandingPage } from "@/pages/LandingPage";
 import { WelcomePage } from "@/pages/WelcomePage";
 import { LoginPage } from "@/pages/LoginPage";
-import { AbhaPage } from "@/pages/AbhaPage";
-import { PersonalInfoPage } from "@/pages/PersonalInfoPage";
-import { ScannedVisitPage } from "@/pages/ScannedVisitPage";
-import { AssessmentPage } from "@/pages/AssessmentPage";
-import { PreferencesPage } from "@/pages/PreferencesPage";
-import { ConsentPage } from "@/pages/ConsentPage";
-import { MedicalProfilePage } from "@/pages/MedicalProfilePage";
-import { RecordsPage } from "@/pages/RecordsPage";
-import { CompletePage } from "@/pages/CompletePage";
-import { ProfilePage } from "@/pages/ProfilePage";
-import { InterviewPage } from "@/pages/InterviewPage";
-import { TimelinePage } from "@/pages/TimelinePage";
-import { ReviewPage } from "@/pages/ReviewPage";
-import { AyushPage } from "@/pages/AyushPage";
-import { HomePage } from "@/pages/HomePage";
-import { VisitPage } from "@/pages/VisitPage";
-import { VisitReviewPage } from "@/pages/VisitReviewPage";
-import { SettingsPage } from "@/pages/SettingsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { LoadingPanel } from "@/components/ui/States";
 import { RequireAuth, RequireStep } from "./guards";
+
+// Split by route. The landing, language and sign-in screens stay in the
+// main bundle because they are what a first-time visitor loads; every
+// screen past sign-in is fetched when it is first opened. This matters
+// more here than in most products: the app is aimed at patients on
+// mid-range phones over mobile data, where one 600 KB bundle is a wait
+// before anything is usable at all.
+const AbhaPage = lazy(() => import("@/pages/AbhaPage").then((m) => ({ default: m.AbhaPage })));
+const AssessmentPage = lazy(() => import("@/pages/AssessmentPage").then((m) => ({ default: m.AssessmentPage })));
+const AyushPage = lazy(() => import("@/pages/AyushPage").then((m) => ({ default: m.AyushPage })));
+const CompletePage = lazy(() => import("@/pages/CompletePage").then((m) => ({ default: m.CompletePage })));
+const ConsentPage = lazy(() => import("@/pages/ConsentPage").then((m) => ({ default: m.ConsentPage })));
+const HomePage = lazy(() => import("@/pages/HomePage").then((m) => ({ default: m.HomePage })));
+const InterviewPage = lazy(() => import("@/pages/InterviewPage").then((m) => ({ default: m.InterviewPage })));
+const MedicalProfilePage = lazy(() => import("@/pages/MedicalProfilePage").then((m) => ({ default: m.MedicalProfilePage })));
+const PersonalInfoPage = lazy(() => import("@/pages/PersonalInfoPage").then((m) => ({ default: m.PersonalInfoPage })));
+const PreferencesPage = lazy(() => import("@/pages/PreferencesPage").then((m) => ({ default: m.PreferencesPage })));
+const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+const RecordsPage = lazy(() => import("@/pages/RecordsPage").then((m) => ({ default: m.RecordsPage })));
+const ReviewPage = lazy(() => import("@/pages/ReviewPage").then((m) => ({ default: m.ReviewPage })));
+const ScannedVisitPage = lazy(() => import("@/pages/ScannedVisitPage").then((m) => ({ default: m.ScannedVisitPage })));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const TimelinePage = lazy(() => import("@/pages/TimelinePage").then((m) => ({ default: m.TimelinePage })));
+const VisitPage = lazy(() => import("@/pages/VisitPage").then((m) => ({ default: m.VisitPage })));
+const VisitReviewPage = lazy(() => import("@/pages/VisitReviewPage").then((m) => ({ default: m.VisitReviewPage })));
 
 /** Every onboarding step is auth-guarded and progress-guarded. */
 function Step({ children }: { children: React.ReactNode }) {
@@ -34,7 +43,10 @@ function Step({ children }: { children: React.ReactNode }) {
 
 export function AppRoutes() {
   return (
-    <Routes>
+    // One boundary for all of them: a route chunk is a single small
+    // request, so a shared fallback avoids a spinner per page.
+    <Suspense fallback={<LoadingPanel label="Loading…" />}>
+      <Routes>
       {/* "/" is the public landing page; a kiosk is pinned to /start, which
           is the language-then-begin screen. */}
       <Route path="/" element={<LandingPage />} />
@@ -82,6 +94,7 @@ export function AppRoutes() {
 
       <Route path="/onboarding" element={<Navigate to="/onboarding/abha" replace />} />
       <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }

@@ -1,10 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { STRINGS, translate, untranslated, type StringKey } from "./strings";
 import { localised } from "@/services/apiClient";
+import { loadAllOverlays } from "@/lib/translations";
 import type { Language } from "@/types/api";
 
 const LANGUAGES: Language[] = ["en", "hi", "mr", "ta", "gu", "pa"];
 const KEYS = Object.keys(STRINGS) as StringKey[];
+
+
+beforeAll(async () => {
+  // The overlays are fetched on demand in the app; a test that asserts
+  // coverage across all six languages has to ask for all of them.
+  await loadAllOverlays();
+});
 
 describe("UI strings", () => {
   it("every key has English", () => {

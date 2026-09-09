@@ -9,6 +9,19 @@
 services:
   - type: web
     name: medikiosk-api
+    # NOT SET DELIBERATELY, and worth a decision rather than a default.
+    #
+    # Render defaults to Oregon. Measured from Delhi: the TCP handshake to
+    # the onrender.com edge takes 6ms, but /health — which touches no
+    # database — answers in 270ms. That ~265ms is transit to Oregon and back,
+    # paid by every single request, and a page makes three of them.
+    #
+    # `region: singapore` would cut it to roughly 40-60ms from India. It is
+    # not set here because Render cannot move an existing service between
+    # regions: applying it recreates the service AND the database, so the
+    # demo data has to be reseeded and VITE_API_BASE_URL on Vercel has to be
+    # pointed at the new hostname. Worth doing before real users; not worth
+    # doing silently to a running deployment.
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
