@@ -18,6 +18,7 @@ from app.modules.interview.schemas import (
     TranscriptView,
 )
 from app.modules.patient.models import Patient
+from app.config import settings
 from app.services.ai import get_provider, provider_status
 
 router = APIRouter(prefix="/interview", tags=["interview"])
@@ -51,7 +52,17 @@ async def ai_diagnostics(patient: Patient = Depends(current_patient)) -> dict:
     """
     status = provider_status()
     provider = get_provider()
-    return {**status, "probe": await provider.probe()}
+    return {
+        **status,
+        # Which OCR path this deployment uses. Reported because the wrong
+        # value here is what killed the service: the local ONNX engine needs
+        # ~700 MB once it has read a document, and on a 512 MB instance that
+        # surfaces as an HTTP health check failure with nothing pointing at
+        # OCR. Confirming it previously meant uploading a document and seeing
+        # whether the service survived.
+        "ocr_provider": settings.ocr_provider,
+        "probe": await provider.probe(),
+    }
 
 
 @router.post("/start", response_model=InterviewView)
